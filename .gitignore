@@ -1,0 +1,10 @@
+# Ignore backup artifacts and logs in project subdir
+pg_backups/
+*.tar.gz
+*.dump
+*.sql
+logs/
+*.log
+*.out
+*.trace
+*.err
