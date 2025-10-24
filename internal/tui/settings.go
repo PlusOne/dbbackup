@@ -7,23 +7,34 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
 
+var (
+	headerStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99")).Padding(1, 2)
+	inputStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	buttonStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("57")).Padding(0, 2)
+	selectedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Background(lipgloss.Color("57")).Bold(true)
+	detailStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+)
+
 // SettingsModel represents the settings configuration state
 type SettingsModel struct {
-	config   *config.Config
-	logger   logger.Logger
-	cursor   int
-	editing  bool
+	config       *config.Config
+	logger       logger.Logger
+	cursor       int
+	editing      bool
 	editingField string
 	editingValue string
-	settings []SettingItem
-	quitting bool
-	message  string
-	parent   tea.Model
+	settings     []SettingItem
+	quitting     bool
+	message      string
+	parent       tea.Model
+	dirBrowser   *DirectoryBrowser
+	browsingDir  bool
 }
 
 // SettingItem represents a configurable setting
@@ -217,6 +228,53 @@ func (m SettingsModel) Init() tea.Cmd {
 func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle directory browsing mode
+		if m.browsingDir && m.dirBrowser != nil {
+			switch msg.String() {
+			case "esc":
+				m.browsingDir = false
+				m.dirBrowser.Hide()
+				return m, nil
+			case "up", "k":
+				m.dirBrowser.Navigate(-1)
+				return m, nil
+			case "down", "j":
+				m.dirBrowser.Navigate(1)
+				return m, nil
+			case "enter", "right", "l":
+				m.dirBrowser.Enter()
+				return m, nil
+			case "left", "h":
+				// Go up one level (same as selecting ".." and entering)
+				parentPath := filepath.Dir(m.dirBrowser.CurrentPath)
+				if parentPath != m.dirBrowser.CurrentPath { // Avoid infinite loop at root
+					m.dirBrowser.CurrentPath = parentPath
+					m.dirBrowser.LoadItems()
+				}
+				return m, nil
+			case " ":
+				// Select current directory
+				selectedPath := m.dirBrowser.Select()
+				if m.cursor < len(m.settings) {
+					setting := m.settings[m.cursor]
+					if err := setting.Update(m.config, selectedPath); err != nil {
+						m.message = "❌ Error: " + err.Error()
+					} else {
+						m.message = "✅ Directory updated: " + selectedPath
+					}
+				}
+				m.browsingDir = false
+				m.dirBrowser.Hide()
+				return m, nil
+			case "tab":
+				// Toggle back to settings
+				m.browsingDir = false
+				m.dirBrowser.Hide()
+				return m, nil
+			}
+			return m, nil
+		}
+	
 		if m.editing {
 			return m.handleEditingInput(msg)
 		}
@@ -238,6 +296,20 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", " ":
 			return m.startEditing()
+
+		case "tab":
+			// Directory browser for path fields
+			if m.cursor >= 0 && m.cursor < len(m.settings) {
+				if m.settings[m.cursor].Type == "path" {
+					return m.openDirectoryBrowser()
+				} else {
+					m.message = "❌ Tab key only works on directory path fields"
+					return m, nil
+				}
+			} else {
+				m.message = "❌ Invalid selection"
+				return m, nil
+			}
 
 		case "r":
 			return m.resetToDefaults()
@@ -412,6 +484,14 @@ func (m SettingsModel) View() string {
 			b.WriteString(desc)
 			b.WriteString("\n")
 		}
+		
+		// Show directory browser for current path field
+		if m.cursor == i && m.browsingDir && m.dirBrowser != nil && setting.Type == "path" {
+			b.WriteString("\n")
+			browserView := m.dirBrowser.Render()
+			b.WriteString(browserView)
+			b.WriteString("\n")
+		}
 	}
 
 	// Message area
@@ -445,11 +525,45 @@ func (m SettingsModel) View() string {
 	if m.editing {
 		footer = infoStyle.Render("\n⌨️  Type new value • Enter to save • Esc to cancel")
 	} else {
-		footer = infoStyle.Render("\n⌨️  ↑/↓ navigate • Enter to edit • 's' save • 'r' reset • 'q' back to menu")
+		if m.browsingDir {
+			footer = infoStyle.Render("\n⌨️  ↑/↓ navigate directories • Enter open • Space select • Tab/Esc back to settings")
+		} else {
+			// Show different help based on current selection
+			if m.cursor >= 0 && m.cursor < len(m.settings) && m.settings[m.cursor].Type == "path" {
+				footer = infoStyle.Render("\n⌨️  ↑/↓ navigate • Enter edit • Tab browse directories • 's' save • 'r' reset • 'q' menu")
+			} else {
+				footer = infoStyle.Render("\n⌨️  ↑/↓ navigate • Enter edit • 's' save • 'r' reset • 'q' menu • Tab=dirs on path fields only")
+			}
+		}
 	}
 	b.WriteString(footer)
 
 	return b.String()
+}
+
+func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
+	if m.cursor >= len(m.settings) {
+		return m, nil
+	}
+
+	setting := m.settings[m.cursor]
+	currentValue := setting.Value(m.config)
+	if currentValue == "" {
+		currentValue = "/tmp"
+	}
+
+	if m.dirBrowser == nil {
+		m.dirBrowser = NewDirectoryBrowser(currentValue)
+	} else {
+		// Update the browser to start from the current value
+		m.dirBrowser.CurrentPath = currentValue
+		m.dirBrowser.LoadItems()
+	}
+	
+	m.dirBrowser.Show()
+	m.browsingDir = true
+
+	return m, nil
 }
 
 // RunSettingsMenu starts the settings configuration interface

@@ -1,5 +1,0 @@
-#!/bin/bash
-# Simple wrapper for dbbackup with postgres defaults
-
-cd /root/dbbackup
-exec ./dbbackup-simple interactive --user postgres "$@"
