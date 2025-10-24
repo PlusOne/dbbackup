@@ -34,7 +34,7 @@ chmod +x ./bin/dbbackup_darwin_arm64
 
 ### Option 2: Build from Source
 ```bash
-git clone https://github.com/your-repo/dbbackup.git
+git clone https://git.uuxo.net/renz/dbbackup.git
 cd dbbackup
 go build -o dbbackup .
 ```

@@ -25,14 +25,15 @@ A comprehensive, high-performance database backup and restore solution with **mu
 ### 💡 **Smart Progress Features**
 ```bash
 # Live backup progress example
-🔄 PostgreSQL Backup [78%] - Compressing archive...
-    [███████████████▒▒▒▒▒] 
-    ⏱️  Elapsed: 2m 45.3s | Files: 24/30 | Data: 1.8GB/2.3GB
-    📝 Current: Creating metadata file
-    
-✅ Backup completed in 3m 12.7s
-📁 Output: /backups/db_postgres_20241203_143527.dump (1.1GB)
-🔍 Verification: PASSED
+🔄 Starting backup: postgres
+   [10%] Backup directory prepared
+   [20%] Generated backup filename
+   [30%] Backup command prepared
+   [40%] Starting database backup...
+   [80%] Database backup completed
+   [90%] Backup verified: 822 B
+   [100%] Backup operation completed successfully
+✅ ✅ Single database backup completed: db_postgres_20251024_185103.dump
 ```
 
 ## 🚀 Key Features
@@ -63,28 +64,29 @@ Download the appropriate binary for your platform from the `bin/` directory:
 
 ```bash
 # Linux (Intel/AMD)
-wget https://github.com/your-repo/dbbackup/releases/latest/download/dbbackup_linux_amd64
+curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_linux_amd64 -o dbbackup_linux_amd64
 chmod +x dbbackup_linux_amd64
 sudo mv dbbackup_linux_amd64 /usr/local/bin/dbbackup
 
 # macOS (Intel)
-wget https://github.com/your-repo/dbbackup/releases/latest/download/dbbackup_darwin_amd64
+curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_darwin_amd64 -o dbbackup_darwin_amd64
 chmod +x dbbackup_darwin_amd64
 sudo mv dbbackup_darwin_amd64 /usr/local/bin/dbbackup
 
 # macOS (Apple Silicon)
-wget https://github.com/your-repo/dbbackup/releases/latest/download/dbbackup_darwin_arm64
+curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_darwin_arm64 -o dbbackup_darwin_arm64
 chmod +x dbbackup_darwin_arm64
 sudo mv dbbackup_darwin_arm64 /usr/local/bin/dbbackup
 
 # Windows (download and rename)
-# Download dbbackup_windows_amd64.exe and use directly
+curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_windows_amd64.exe -o dbbackup_windows_amd64.exe
+# Use directly or move into PATH
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/your-repo/dbbackup.git
+git clone https://git.uuxo.net/renz/dbbackup.git
 cd dbbackup
 go build -o dbbackup .
 ```
