@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	headerStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99")).Padding(1, 2)
-	inputStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	buttonStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("57")).Padding(0, 2)
-	selectedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Background(lipgloss.Color("57")).Bold(true)
-	detailStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99")).Padding(1, 2)
+	inputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	buttonStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("57")).Padding(0, 2)
+	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Background(lipgloss.Color("57")).Bold(true)
+	detailStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
 )
 
 // SettingsModel represents the settings configuration state
@@ -50,6 +50,16 @@ type SettingItem struct {
 // Initialize settings model
 func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) SettingsModel {
 	settings := []SettingItem{
+		{
+			Key:         "database_type",
+			DisplayName: "Database Type",
+			Value:       func(c *config.Config) string { return c.DatabaseType },
+			Update: func(c *config.Config, v string) error {
+				return c.SetDatabaseType(v)
+			},
+			Type:        "string",
+			Description: "Target database engine (postgres, mysql, mariadb)",
+		},
 		{
 			Key:         "backup_dir",
 			DisplayName: "Backup Directory",
@@ -195,8 +205,12 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 		{
 			Key:         "auto_detect_cores",
 			DisplayName: "Auto Detect CPU Cores",
-			Value:       func(c *config.Config) string { 
-				if c.AutoDetectCores { return "true" } else { return "false" }
+			Value: func(c *config.Config) string {
+				if c.AutoDetectCores {
+					return "true"
+				} else {
+					return "false"
+				}
 			},
 			Update: func(c *config.Config, v string) error {
 				val, err := strconv.ParseBool(v)
@@ -274,11 +288,11 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-	
+
 		if m.editing {
 			return m.handleEditingInput(msg)
 		}
-		
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			m.quitting = true
@@ -328,29 +342,29 @@ func (m SettingsModel) handleEditingInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		m.quitting = true
 		return m.parent, nil
-		
+
 	case "esc":
 		m.editing = false
 		m.editingField = ""
 		m.editingValue = ""
 		m.message = ""
 		return m, nil
-		
+
 	case "enter":
 		return m.saveEditedValue()
-		
+
 	case "backspace":
 		if len(m.editingValue) > 0 {
 			m.editingValue = m.editingValue[:len(m.editingValue)-1]
 		}
-		
+
 	default:
 		// Add character to editing value
 		if len(msg.String()) == 1 {
 			m.editingValue += msg.String()
 		}
 	}
-	
+
 	return m, nil
 }
 
@@ -359,13 +373,13 @@ func (m SettingsModel) startEditing() (tea.Model, tea.Cmd) {
 	if m.cursor >= len(m.settings) {
 		return m, nil
 	}
-	
+
 	setting := m.settings[m.cursor]
 	m.editing = true
 	m.editingField = setting.Key
 	m.editingValue = setting.Value(m.config)
 	m.message = ""
-	
+
 	return m, nil
 }
 
@@ -374,7 +388,7 @@ func (m SettingsModel) saveEditedValue() (tea.Model, tea.Cmd) {
 	if m.editingField == "" {
 		return m, nil
 	}
-	
+
 	// Find the setting being edited
 	var setting *SettingItem
 	for i := range m.settings {
@@ -383,41 +397,41 @@ func (m SettingsModel) saveEditedValue() (tea.Model, tea.Cmd) {
 			break
 		}
 	}
-	
+
 	if setting == nil {
 		m.message = errorStyle.Render("❌ Setting not found")
 		m.editing = false
 		return m, nil
 	}
-	
+
 	// Update the configuration
 	if err := setting.Update(m.config, m.editingValue); err != nil {
 		m.message = errorStyle.Render(fmt.Sprintf("❌ %s", err.Error()))
 		return m, nil
 	}
-	
+
 	m.message = successStyle.Render(fmt.Sprintf("✅ Updated %s", setting.DisplayName))
 	m.editing = false
 	m.editingField = ""
 	m.editingValue = ""
-	
+
 	return m, nil
 }
 
 // resetToDefaults resets configuration to default values
 func (m SettingsModel) resetToDefaults() (tea.Model, tea.Cmd) {
 	newConfig := config.New()
-	
+
 	// Copy important connection details
 	newConfig.Host = m.config.Host
 	newConfig.Port = m.config.Port
 	newConfig.User = m.config.User
 	newConfig.Database = m.config.Database
 	newConfig.DatabaseType = m.config.DatabaseType
-	
+
 	*m.config = *newConfig
 	m.message = successStyle.Render("✅ Settings reset to defaults")
-	
+
 	return m, nil
 }
 
@@ -427,7 +441,7 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 		m.message = errorStyle.Render(fmt.Sprintf("❌ Validation failed: %s", err.Error()))
 		return m, nil
 	}
-	
+
 	// Optimize CPU settings if auto-detect is enabled
 	if m.config.AutoDetectCores {
 		if err := m.config.OptimizeForCPU(); err != nil {
@@ -435,7 +449,7 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	
+
 	m.message = successStyle.Render("✅ Settings validated and saved")
 	return m, nil
 }
@@ -456,7 +470,11 @@ func (m SettingsModel) View() string {
 	for i, setting := range m.settings {
 		cursor := " "
 		value := setting.Value(m.config)
-		
+		displayValue := value
+		if setting.Key == "database_type" {
+			displayValue = fmt.Sprintf("%s (%s)", value, m.config.DisplayDatabaseType())
+		}
+
 		if m.cursor == i {
 			cursor = ">"
 			if m.editing && m.editingField == setting.Key {
@@ -469,22 +487,22 @@ func (m SettingsModel) View() string {
 				b.WriteString(selectedStyle.Render(line))
 				b.WriteString(" ✏️")
 			} else {
-				line := fmt.Sprintf("%s %s: %s", cursor, setting.DisplayName, value)
+				line := fmt.Sprintf("%s %s: %s", cursor, setting.DisplayName, displayValue)
 				b.WriteString(selectedStyle.Render(line))
 			}
 		} else {
-			line := fmt.Sprintf("%s %s: %s", cursor, setting.DisplayName, value)
+			line := fmt.Sprintf("%s %s: %s", cursor, setting.DisplayName, displayValue)
 			b.WriteString(menuStyle.Render(line))
 		}
 		b.WriteString("\n")
-		
+
 		// Show description for selected item
 		if m.cursor == i && !m.editing {
 			desc := detailStyle.Render(fmt.Sprintf("    %s", setting.Description))
 			b.WriteString(desc)
 			b.WriteString("\n")
 		}
-		
+
 		// Show directory browser for current path field
 		if m.cursor == i && m.browsingDir && m.dirBrowser != nil && setting.Type == "path" {
 			b.WriteString("\n")
@@ -506,14 +524,15 @@ func (m SettingsModel) View() string {
 		b.WriteString("\n")
 		b.WriteString(infoStyle.Render("📋 Current Configuration:"))
 		b.WriteString("\n")
-		
+
 		summary := []string{
+			fmt.Sprintf("Target DB: %s (%s)", m.config.DisplayDatabaseType(), m.config.DatabaseType),
 			fmt.Sprintf("Database: %s@%s:%d", m.config.User, m.config.Host, m.config.Port),
 			fmt.Sprintf("Backup Dir: %s", m.config.BackupDir),
 			fmt.Sprintf("Compression: Level %d", m.config.CompressionLevel),
 			fmt.Sprintf("Jobs: %d parallel, %d dump", m.config.Jobs, m.config.DumpJobs),
 		}
-		
+
 		for _, line := range summary {
 			b.WriteString(detailStyle.Render(fmt.Sprintf("  %s", line)))
 			b.WriteString("\n")
@@ -559,7 +578,7 @@ func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
 		m.dirBrowser.CurrentPath = currentValue
 		m.dirBrowser.LoadItems()
 	}
-	
+
 	m.dirBrowser.Show()
 	m.browsingDir = true
 
@@ -570,10 +589,10 @@ func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
 func RunSettingsMenu(cfg *config.Config, log logger.Logger, parent tea.Model) error {
 	m := NewSettingsModel(cfg, log, parent)
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	
+
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running settings menu: %w", err)
 	}
-	
+
 	return nil
 }

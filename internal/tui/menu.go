@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -23,8 +24,8 @@ var (
 			Foreground(lipgloss.Color("#626262"))
 
 	menuSelectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF75B7")).
-			Bold(true)
+				Foreground(lipgloss.Color("#FF75B7")).
+				Bold(true)
 
 	infoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262"))
@@ -36,17 +37,28 @@ var (
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF6B6B")).
 			Bold(true)
+
+	dbSelectorLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#57C7FF")).
+				Bold(true)
 )
+
+type dbTypeOption struct {
+	label string
+	value string
+}
 
 // MenuModel represents the simple menu state
 type MenuModel struct {
-	choices  []string
-	cursor   int
-	config   *config.Config
-	logger   logger.Logger
-	quitting bool
-	message  string
-	
+	choices      []string
+	cursor       int
+	config       *config.Config
+	logger       logger.Logger
+	quitting     bool
+	message      string
+	dbTypes      []dbTypeOption
+	dbTypeCursor int
+
 	// Background operations
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -54,7 +66,17 @@ type MenuModel struct {
 
 func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
+	dbTypes := []dbTypeOption{
+		{label: "PostgreSQL", value: "postgres"},
+		{label: "MySQL / MariaDB", value: "mysql"},
+	}
+
+	dbCursor := 0
+	if cfg.IsMySQL() {
+		dbCursor = 1
+	}
+
 	model := MenuModel{
 		choices: []string{
 			"Single Database Backup",
@@ -67,12 +89,14 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 			"Clear Operation History",
 			"Quit",
 		},
-		config: cfg,
-		logger: log,
-		ctx:    ctx,
-		cancel: cancel,
+		config:       cfg,
+		logger:       log,
+		ctx:          ctx,
+		cancel:       cancel,
+		dbTypes:      dbTypes,
+		dbTypeCursor: dbCursor,
 	}
-	
+
 	return model
 }
 
@@ -92,6 +116,24 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.quitting = true
 			return m, tea.Quit
+
+		case "left", "h":
+			if m.dbTypeCursor > 0 {
+				m.dbTypeCursor--
+				m.applyDatabaseSelection()
+			}
+
+		case "right", "l":
+			if m.dbTypeCursor < len(m.dbTypes)-1 {
+				m.dbTypeCursor++
+				m.applyDatabaseSelection()
+			}
+
+		case "t":
+			if len(m.dbTypes) > 0 {
+				m.dbTypeCursor = (m.dbTypeCursor + 1) % len(m.dbTypes)
+				m.applyDatabaseSelection()
+			}
 
 		case "up", "k":
 			if m.cursor > 0 {
@@ -146,9 +188,24 @@ func (m MenuModel) View() string {
 	header := titleStyle.Render("🗄️  Database Backup Tool - Interactive Menu")
 	s += fmt.Sprintf("\n%s\n\n", header)
 
+	if len(m.dbTypes) > 0 {
+		options := make([]string, len(m.dbTypes))
+		for i, opt := range m.dbTypes {
+			if m.dbTypeCursor == i {
+				options[i] = menuSelectedStyle.Render(opt.label)
+			} else {
+				options[i] = menuStyle.Render(opt.label)
+			}
+		}
+		selector := fmt.Sprintf("Target Engine: %s", strings.Join(options, menuStyle.Render("  |  ")))
+		s += dbSelectorLabelStyle.Render(selector) + "\n"
+		hint := infoStyle.Render("Switch with ←/→ or t • Cluster backup requires PostgreSQL")
+		s += hint + "\n\n"
+	}
+
 	// Database info
-	dbInfo := infoStyle.Render(fmt.Sprintf("Database: %s@%s:%d (%s)", 
-		m.config.User, m.config.Host, m.config.Port, m.config.DatabaseType))
+	dbInfo := infoStyle.Render(fmt.Sprintf("Database: %s@%s:%d (%s)",
+		m.config.User, m.config.Host, m.config.Port, m.config.DisplayDatabaseType()))
 	s += fmt.Sprintf("%s\n\n", dbInfo)
 
 	// Menu items
@@ -189,6 +246,10 @@ func (m MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
 
 // handleClusterBackup shows confirmation and executes cluster backup
 func (m MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
+	if !m.config.IsPostgreSQL() {
+		m.message = errorStyle.Render("❌ Cluster backup is available only for PostgreSQL targets")
+		return m, nil
+	}
 	confirm := NewConfirmationModel(m.config, m.logger, m,
 		"🗄️  Cluster Backup",
 		"This will backup ALL databases in the cluster. Continue?")
@@ -220,14 +281,39 @@ func (m MenuModel) handleSettings() (tea.Model, tea.Cmd) {
 	return settingsModel, nil
 }
 
+func (m *MenuModel) applyDatabaseSelection() {
+	if m == nil || len(m.dbTypes) == 0 {
+		return
+	}
+	if m.dbTypeCursor < 0 || m.dbTypeCursor >= len(m.dbTypes) {
+		return
+	}
+
+	selection := m.dbTypes[m.dbTypeCursor]
+	if err := m.config.SetDatabaseType(selection.value); err != nil {
+		m.message = errorStyle.Render(fmt.Sprintf("❌ %v", err))
+		return
+	}
+
+	// Refresh default port if unchanged
+	if m.config.Port == 0 {
+		m.config.Port = m.config.GetDefaultPort()
+	}
+
+	m.message = successStyle.Render(fmt.Sprintf("🔀 Target database set to %s", m.config.DisplayDatabaseType()))
+	if m.logger != nil {
+		m.logger.Info("updated target database type", "type", m.config.DatabaseType, "port", m.config.Port)
+	}
+}
+
 // RunInteractiveMenu starts the simple TUI
 func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
 	m := NewMenuModel(cfg, log)
 	p := tea.NewProgram(m)
-	
+
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running interactive menu: %w", err)
 	}
-	
+
 	return nil
 }

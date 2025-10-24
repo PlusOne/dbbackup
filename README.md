@@ -111,6 +111,8 @@ dbbackup menu --database postgres --host localhost --user postgres
 dbbackup ui --database myapp_db --progress
 ```
 
+> 💡 In the interactive menu, use the left/right arrow keys (or press `t`) to switch the target engine between PostgreSQL and MySQL/MariaDB before launching an operation.
+
 ### Enhanced Progress Tracking Commands
 
 #### Real-Time Progress Monitoring
@@ -159,6 +161,9 @@ dbbackup restore backup.dump --progress --verify --show-steps
 ```bash
 # Single database backup (auto-optimized for your CPU)
 dbbackup backup single myapp_db --db-type postgres
+
+# MySQL/MariaDB backup using the short flag
+dbbackup backup single myapp_db -d mysql --host mysql.example.com --port 3306
 
 # Sample backup (10% of data)
 dbbackup backup sample myapp_db --sample-ratio 10
@@ -245,7 +250,7 @@ dbbackup cpu
 | `--port` | Database port | `5432` (PG), `3306` (MySQL) | `--port 5432` |
 | `--user` | Database user | `postgres` (PG), `root` (MySQL) | `--user backup_user` |
 | `--database` | Database name | `postgres` | `--database myapp_db` |
-| `--db-type` | Database type | `postgres` | `--db-type mysql` |
+| `-d`, `--db-type` | Database type (`postgres`, `mysql`, `mariadb`) | `postgres` | `-d mysql` |
 | `--ssl-mode` | SSL mode | `prefer` | `--ssl-mode require` |
 | `--insecure` | Disable SSL | `false` | `--insecure` |
 
@@ -258,6 +263,11 @@ export PG_PORT=5432
 export PG_USER=postgres
 export PGPASSWORD=secret
 export DB_TYPE=postgres
+export MYSQL_HOST=localhost
+export MYSQL_PORT=3306
+export MYSQL_USER=root
+export MYSQL_PWD=secret
+export MYSQL_DATABASE=myapp_db
 
 # CPU optimization
 export AUTO_DETECT_CORES=true

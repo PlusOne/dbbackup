@@ -148,7 +148,7 @@ func (m StatusViewModel) View() string {
 		}
 		s.WriteString("\n")
 
-		s.WriteString(fmt.Sprintf("Database Type: %s\n", m.config.DatabaseType))
+		s.WriteString(fmt.Sprintf("Database Type: %s (%s)\n", m.config.DisplayDatabaseType(), m.config.DatabaseType))
 		s.WriteString(fmt.Sprintf("Host: %s:%d\n", m.config.Host, m.config.Port))
 		s.WriteString(fmt.Sprintf("User: %s\n", m.config.User))
 		s.WriteString(fmt.Sprintf("Backup Directory: %s\n", m.config.BackupDir))

@@ -50,6 +50,8 @@ dbbackup interactive --database your_database
 dbbackup interactive --database postgres --host localhost --user postgres
 ```
 
+> Tip: In the interactive menu, tap the left/right arrows (or `t`) to toggle between PostgreSQL and MySQL/MariaDB before starting a task.
+
 ### 📊 Command Line with Progress
 ```bash
 # Single backup with live progress
@@ -118,6 +120,9 @@ dbbackup status --db-type postgres
 # Single database backup
 dbbackup backup single myapp_db --db-type mysql
 
+# Using the short flag for database selection
+dbbackup backup single myapp_db -d mysql
+
 # Sample backup
 dbbackup backup sample myapp_db --sample-ratio 10 --db-type mysql
 
@@ -145,7 +150,7 @@ dbbackup backup cluster --jobs 16 --dump-jobs 8 --max-cores 32
 | `--host` | Database host | `--host db.example.com` |
 | `--port` | Database port | `--port 5432` |
 | `--user` | Database user | `--user backup_user` |
-| `--db-type` | Database type | `--db-type mysql` |
+| `-d`, `--db-type` | Database type (`postgres`, `mysql`, `mariadb`) | `-d mysql` |
 | `--insecure` | Disable SSL | `--insecure` |
 | `--jobs` | Parallel jobs | `--jobs 8` |
 | `--debug` | Debug mode | `--debug` |

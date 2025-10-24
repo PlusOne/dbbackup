@@ -5,7 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	
+	"strings"
+
 	"dbbackup/internal/cpu"
 )
 
@@ -34,7 +35,7 @@ type Config struct {
 	MaxCores         int
 	AutoDetectCores  bool
 	CPUWorkloadType  string // "cpu-intensive", "io-intensive", "balanced"
-	
+
 	// CPU detection
 	CPUDetector *cpu.Detector
 	CPUInfo     *cpu.CPUInfo
@@ -64,15 +65,41 @@ func New() *Config {
 	cpuDetector := cpu.NewDetector()
 	cpuInfo, _ := cpuDetector.DetectCPU()
 
-	return &Config{
+	dbTypeRaw := getEnvString("DB_TYPE", "postgres")
+	canonicalType, ok := canonicalDatabaseType(dbTypeRaw)
+	if !ok {
+		canonicalType = "postgres"
+	}
+
+	host := getEnvString("PG_HOST", "localhost")
+	port := getEnvInt("PG_PORT", postgresDefaultPort)
+	user := getEnvString("PG_USER", getCurrentUser())
+	databaseName := getEnvString("PG_DATABASE", "postgres")
+	password := getEnvString("PGPASSWORD", "")
+	sslMode := getEnvString("PG_SSLMODE", "prefer")
+
+	if canonicalType == "mysql" {
+		host = getEnvString("MYSQL_HOST", host)
+		port = getEnvInt("MYSQL_PORT", mysqlDefaultPort)
+		user = getEnvString("MYSQL_USER", user)
+		if db := getEnvString("MYSQL_DATABASE", ""); db != "" {
+			databaseName = db
+		}
+		if pwd := getEnvString("MYSQL_PWD", ""); pwd != "" {
+			password = pwd
+		}
+		sslMode = ""
+	}
+
+	cfg := &Config{
 		// Database defaults
-		Host:         getEnvString("PG_HOST", "localhost"),
-		Port:         getEnvInt("PG_PORT", 5432),
-		User:         getEnvString("PG_USER", getCurrentUser()),
-		Database:     getEnvString("PG_DATABASE", "postgres"),
-		Password:     getEnvString("PGPASSWORD", ""),
-		DatabaseType: getEnvString("DB_TYPE", "postgres"),
-		SSLMode:      getEnvString("PG_SSLMODE", "prefer"),
+		Host:         host,
+		Port:         port,
+		User:         user,
+		Database:     databaseName,
+		Password:     password,
+		DatabaseType: canonicalType,
+		SSLMode:      sslMode,
 		Insecure:     getEnvBool("INSECURE", false),
 
 		// Backup defaults
@@ -103,6 +130,15 @@ func New() *Config {
 		SingleDBName:  getEnvString("SINGLE_DB_NAME", ""),
 		RestoreDBName: getEnvString("RESTORE_DB_NAME", ""),
 	}
+
+	// Ensure canonical defaults are enforced
+	if err := cfg.SetDatabaseType(cfg.DatabaseType); err != nil {
+		cfg.DatabaseType = "postgres"
+		cfg.Port = postgresDefaultPort
+		cfg.SSLMode = "prefer"
+	}
+
+	return cfg
 }
 
 // UpdateFromEnvironment updates configuration from environment variables
@@ -117,18 +153,18 @@ func (c *Config) UpdateFromEnvironment() {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	if c.DatabaseType != "postgres" && c.DatabaseType != "mysql" {
-		return &ConfigError{Field: "database-type", Value: c.DatabaseType, Message: "must be 'postgres' or 'mysql'"}
+	if err := c.SetDatabaseType(c.DatabaseType); err != nil {
+		return err
 	}
-	
+
 	if c.CompressionLevel < 0 || c.CompressionLevel > 9 {
 		return &ConfigError{Field: "compression", Value: string(rune(c.CompressionLevel)), Message: "must be between 0-9"}
 	}
-	
+
 	if c.Jobs < 1 {
 		return &ConfigError{Field: "jobs", Value: string(rune(c.Jobs)), Message: "must be at least 1"}
 	}
-	
+
 	if c.DumpJobs < 1 {
 		return &ConfigError{Field: "dump-jobs", Value: string(rune(c.DumpJobs)), Message: "must be at least 1"}
 	}
@@ -154,12 +190,61 @@ func (c *Config) GetDefaultPort() int {
 	return 5432
 }
 
+// DisplayDatabaseType returns a human-friendly name for the database type
+func (c *Config) DisplayDatabaseType() string {
+	switch c.DatabaseType {
+	case "postgres":
+		return "PostgreSQL"
+	case "mysql":
+		return "MySQL/MariaDB"
+	default:
+		return c.DatabaseType
+	}
+}
+
+// SetDatabaseType normalizes the database type and updates dependent defaults
+func (c *Config) SetDatabaseType(dbType string) error {
+	normalized, ok := canonicalDatabaseType(dbType)
+	if !ok {
+		return &ConfigError{Field: "database-type", Value: dbType, Message: "must be 'postgres' or 'mysql'"}
+	}
+
+	previous := c.DatabaseType
+	previousPort := c.Port
+
+	c.DatabaseType = normalized
+
+	if c.Port == 0 {
+		c.Port = defaultPortFor(normalized)
+	}
+
+	if normalized != previous {
+		if previousPort == defaultPortFor(previous) || previousPort == 0 {
+			c.Port = defaultPortFor(normalized)
+		}
+	}
+
+	// Adjust SSL mode defaults when switching engines. Preserve explicit user choices.
+	switch normalized {
+	case "mysql":
+		if strings.EqualFold(c.SSLMode, "prefer") || strings.EqualFold(c.SSLMode, "preferred") {
+			c.SSLMode = ""
+		}
+	case "postgres":
+		if c.SSLMode == "" {
+			c.SSLMode = "prefer"
+		}
+	}
+
+	return nil
+}
+
 // OptimizeForCPU optimizes job settings based on detected CPU
 func (c *Config) OptimizeForCPU() error {
 	if c.CPUDetector == nil {
 		c.CPUDetector = cpu.NewDetector()
 	}
-	
+
 	if c.CPUInfo == nil {
 		info, err := c.CPUDetector.DetectCPU()
 		if err != nil {
@@ -167,13 +252,13 @@ func (c *Config) OptimizeForCPU() error {
 		}
 		c.CPUInfo = info
 	}
-	
+
 	if c.AutoDetectCores {
 		// Optimize jobs based on workload type
 		if jobs, err := c.CPUDetector.CalculateOptimalJobs(c.CPUWorkloadType, c.MaxCores); err == nil {
 			c.Jobs = jobs
 		}
-		
+
 		// Optimize dump jobs (more conservative for database dumps)
 		if dumpJobs, err := c.CPUDetector.CalculateOptimalJobs("cpu-intensive", c.MaxCores/2); err == nil {
 			c.DumpJobs = dumpJobs
@@ -182,7 +267,7 @@ func (c *Config) OptimizeForCPU() error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -191,16 +276,16 @@ func (c *Config) GetCPUInfo() (*cpu.CPUInfo, error) {
 	if c.CPUInfo != nil {
 		return c.CPUInfo, nil
 	}
-	
+
 	if c.CPUDetector == nil {
 		c.CPUDetector = cpu.NewDetector()
 	}
-	
+
 	info, err := c.CPUDetector.DetectCPU()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	c.CPUInfo = info
 	return info, nil
 }
@@ -214,6 +299,33 @@ type ConfigError struct {
 
 func (e *ConfigError) Error() string {
 	return "config error in field '" + e.Field + "' with value '" + e.Value + "': " + e.Message
+}
+
+const (
+	postgresDefaultPort = 5432
+	mysqlDefaultPort    = 3306
+)
+
+func canonicalDatabaseType(input string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(input)) {
+	case "postgres", "postgresql", "pg":
+		return "postgres", true
+	case "mysql", "mariadb", "mariadb-server", "maria":
+		return "mysql", true
+	default:
+		return "", false
+	}
+}
+
+func defaultPortFor(dbType string) int {
+	switch dbType {
+	case "postgres":
+		return postgresDefaultPort
+	case "mysql":
+		return mysqlDefaultPort
+	default:
+		return postgresDefaultPort
+	}
 }
 
 // Helper functions
@@ -258,17 +370,17 @@ func getDefaultBackupDir() string {
 	if homeDir != "" {
 		return filepath.Join(homeDir, "db_backups")
 	}
-	
+
 	// Fallback based on OS
 	if runtime.GOOS == "windows" {
 		return "C:\\db_backups"
 	}
-	
+
 	// For PostgreSQL user on Linux/Unix
 	if getCurrentUser() == "postgres" {
 		return "/var/lib/pgsql/pg_backups"
 	}
-	
+
 	return "/tmp/db_backups"
 }
 

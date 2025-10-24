@@ -1,16 +1,18 @@
 package cmd
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"dbbackup/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 // Create placeholder commands for the other subcommands
@@ -24,9 +26,6 @@ var restoreCmd = &cobra.Command{
 		if len(args) == 0 {
 			return fmt.Errorf("backup archive filename required")
 		}
-if len(args) == 0 {
-return fmt.Errorf("backup archive filename required")
-}
 		return runRestore(cmd.Context(), args[0])
 	},
 }
@@ -54,9 +53,9 @@ var listCmd = &cobra.Command{
 }
 
 var interactiveCmd = &cobra.Command{
-	Use:   "interactive",
-	Short: "Start interactive menu mode",
-	Long:  `Start the interactive menu system for guided backup operations.`,
+	Use:     "interactive",
+	Short:   "Start interactive menu mode",
+	Long:    `Start the interactive menu system for guided backup operations.`,
 	Aliases: []string{"menu", "ui"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Start the interactive TUI
@@ -82,32 +81,30 @@ var statusCmd = &cobra.Command{
 	},
 }
 
-
-
 // runList lists available backups and databases
 func runList(ctx context.Context) error {
 	fmt.Println("==============================================================")
 	fmt.Println(" Available Backups")
 	fmt.Println("==============================================================")
-	
+
 	// List backup files
 	backupFiles, err := listBackupFiles(cfg.BackupDir)
 	if err != nil {
 		log.Error("Failed to list backup files", "error", err)
 		return fmt.Errorf("failed to list backup files: %w", err)
 	}
-	
+
 	if len(backupFiles) == 0 {
 		fmt.Printf("No backup files found in: %s\n", cfg.BackupDir)
 	} else {
 		fmt.Printf("Found %d backup files in: %s\n\n", len(backupFiles), cfg.BackupDir)
-		
+
 		for _, file := range backupFiles {
 			stat, err := os.Stat(filepath.Join(cfg.BackupDir, file.Name))
 			if err != nil {
 				continue
 			}
-			
+
 			fmt.Printf("📦 %s\n", file.Name)
 			fmt.Printf("   Size: %s\n", formatFileSize(stat.Size()))
 			fmt.Printf("   Modified: %s\n", stat.ModTime().Format("2006-01-02 15:04:05"))
@@ -115,7 +112,7 @@ func runList(ctx context.Context) error {
 			fmt.Println()
 		}
 	}
-	
+
 	return nil
 }
 
@@ -124,12 +121,12 @@ func listBackupFiles(backupDir string) ([]backupFile, error) {
 	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
 		return nil, nil
 	}
-	
+
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var files []backupFile
 	for _, entry := range entries {
 		if !entry.IsDir() && isBackupFile(entry.Name()) {
@@ -144,12 +141,12 @@ func listBackupFiles(backupDir string) ([]backupFile, error) {
 			})
 		}
 	}
-	
+
 	// Sort by modification time (newest first)
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].ModTime.After(files[j].ModTime)
 	})
-	
+
 	return files, nil
 }
 
@@ -162,8 +159,8 @@ type backupFile struct {
 // isBackupFile checks if a file is a backup file based on extension
 func isBackupFile(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
-	return ext == ".dump" || ext == ".sql" || ext == ".tar" || ext == ".gz" || 
-		   strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".dump.gz")
+	return ext == ".dump" || ext == ".sql" || ext == ".tar" || ext == ".gz" ||
+		strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".dump.gz")
 }
 
 // getBackupType determines backup type from filename
@@ -199,10 +196,10 @@ func runPreflight(ctx context.Context) error {
 	fmt.Println("==============================================================")
 	fmt.Println(" Preflight Checks")
 	fmt.Println("==============================================================")
-	
+
 	checksPassed := 0
 	totalChecks := 6
-	
+
 	// 1. Database connectivity check
 	fmt.Print("🔗 Database connectivity... ")
 	if err := testDatabaseConnection(); err != nil {
@@ -211,7 +208,7 @@ func runPreflight(ctx context.Context) error {
 		fmt.Println("✅ PASSED")
 		checksPassed++
 	}
-	
+
 	// 2. Required tools check
 	fmt.Print("🛠️  Required tools (pg_dump/pg_restore)... ")
 	if err := checkRequiredTools(); err != nil {
@@ -220,7 +217,7 @@ func runPreflight(ctx context.Context) error {
 		fmt.Println("✅ PASSED")
 		checksPassed++
 	}
-	
+
 	// 3. Backup directory check
 	fmt.Print("📁 Backup directory access... ")
 	if err := checkBackupDirectory(); err != nil {
@@ -229,7 +226,7 @@ func runPreflight(ctx context.Context) error {
 		fmt.Println("✅ PASSED")
 		checksPassed++
 	}
-	
+
 	// 4. Disk space check
 	fmt.Print("💾 Available disk space... ")
 	if err := checkDiskSpace(); err != nil {
@@ -238,7 +235,7 @@ func runPreflight(ctx context.Context) error {
 		fmt.Println("✅ PASSED")
 		checksPassed++
 	}
-	
+
 	// 5. Permissions check
 	fmt.Print("🔐 File permissions... ")
 	if err := checkPermissions(); err != nil {
@@ -247,7 +244,7 @@ func runPreflight(ctx context.Context) error {
 		fmt.Println("✅ PASSED")
 		checksPassed++
 	}
-	
+
 	// 6. CPU/Memory resources check
 	fmt.Print("🖥️  System resources... ")
 	if err := checkSystemResources(); err != nil {
@@ -256,10 +253,10 @@ func runPreflight(ctx context.Context) error {
 		fmt.Println("✅ PASSED")
 		checksPassed++
 	}
-	
+
 	fmt.Println("")
 	fmt.Printf("Results: %d/%d checks passed\n", checksPassed, totalChecks)
-	
+
 	if checksPassed == totalChecks {
 		fmt.Println("🎉 All preflight checks passed! System is ready for backup operations.")
 		return nil
@@ -286,7 +283,7 @@ func checkRequiredTools() error {
 	if cfg.DatabaseType == "mysql" {
 		tools = []string{"mysqldump", "mysql"}
 	}
-	
+
 	for _, tool := range tools {
 		if _, err := os.Stat("/usr/bin/" + tool); os.IsNotExist(err) {
 			if _, err := os.Stat("/usr/local/bin/" + tool); os.IsNotExist(err) {
@@ -302,7 +299,7 @@ func checkBackupDirectory() error {
 	if err := os.MkdirAll(cfg.BackupDir, 0755); err != nil {
 		return fmt.Errorf("cannot create backup directory: %w", err)
 	}
-	
+
 	// Test write access
 	testFile := filepath.Join(cfg.BackupDir, ".preflight_test")
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
@@ -326,7 +323,7 @@ func checkPermissions() error {
 	if _, err := os.Stat(cfg.BackupDir); os.IsNotExist(err) {
 		return fmt.Errorf("backup directory not accessible")
 	}
-	
+
 	// Test file creation and deletion
 	testFile := filepath.Join(cfg.BackupDir, ".permissions_test")
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
@@ -354,47 +351,69 @@ func runRestore(ctx context.Context, archiveName string) error {
 	fmt.Println("==============================================================")
 	fmt.Println(" Database Restore")
 	fmt.Println("==============================================================")
-	
+
 	// Construct full path to archive
 	archivePath := filepath.Join(cfg.BackupDir, archiveName)
-	
+
 	// Check if archive exists
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
 		return fmt.Errorf("backup archive not found: %s", archivePath)
 	}
-	
+
 	// Detect archive type
 	archiveType := detectArchiveType(archiveName)
 	fmt.Printf("Archive: %s\n", archiveName)
 	fmt.Printf("Type: %s\n", archiveType)
 	fmt.Printf("Location: %s\n", archivePath)
 	fmt.Println()
-	
+
 	// Get archive info
 	stat, err := os.Stat(archivePath)
 	if err != nil {
 		return fmt.Errorf("cannot access archive: %w", err)
 	}
-	
+
 	fmt.Printf("Size: %s\n", formatFileSize(stat.Size()))
 	fmt.Printf("Created: %s\n", stat.ModTime().Format("2006-01-02 15:04:05"))
 	fmt.Println()
-	
+
 	// Show warning
 	fmt.Println("⚠️  WARNING: This will restore data to the target database.")
 	fmt.Println("   Existing data may be overwritten or merged depending on the restore method.")
 	fmt.Println()
-	
+
 	// For safety, show what would be done without actually doing it
 	switch archiveType {
 	case "Single Database (.dump)":
 		fmt.Println("🔄 Would execute: pg_restore to restore single database")
-		fmt.Printf("   Command: pg_restore -h %s -p %d -U %s -d %s --verbose %s\n", 
+		fmt.Printf("   Command: pg_restore -h %s -p %d -U %s -d %s --verbose %s\n",
 			cfg.Host, cfg.Port, cfg.User, cfg.Database, archivePath)
+	case "Single Database (.dump.gz)":
+		fmt.Println("🔄 Would execute: gunzip and pg_restore to restore single database")
+		fmt.Printf("   Command: gunzip -c %s | pg_restore -h %s -p %d -U %s -d %s --verbose\n",
+			archivePath, cfg.Host, cfg.Port, cfg.User, cfg.Database)
 	case "SQL Script (.sql)":
-		fmt.Println("🔄 Would execute: psql to run SQL script")
-		fmt.Printf("   Command: psql -h %s -p %d -U %s -d %s -f %s\n", 
-			cfg.Host, cfg.Port, cfg.User, cfg.Database, archivePath)
+		if cfg.IsPostgreSQL() {
+			fmt.Println("🔄 Would execute: psql to run SQL script")
+			fmt.Printf("   Command: psql -h %s -p %d -U %s -d %s -f %s\n",
+				cfg.Host, cfg.Port, cfg.User, cfg.Database, archivePath)
+		} else if cfg.IsMySQL() {
+			fmt.Println("🔄 Would execute: mysql to run SQL script")
+			fmt.Printf("   Command: %s\n", mysqlRestoreCommand(archivePath, false))
+		} else {
+			fmt.Println("🔄 Would execute: SQL client to run script (database type unknown)")
+		}
+	case "SQL Script (.sql.gz)":
+		if cfg.IsPostgreSQL() {
+			fmt.Println("🔄 Would execute: gunzip and psql to run SQL script")
+			fmt.Printf("   Command: gunzip -c %s | psql -h %s -p %d -U %s -d %s\n",
+				archivePath, cfg.Host, cfg.Port, cfg.User, cfg.Database)
+		} else if cfg.IsMySQL() {
+			fmt.Println("🔄 Would execute: gunzip and mysql to run SQL script")
+			fmt.Printf("   Command: %s\n", mysqlRestoreCommand(archivePath, true))
+		} else {
+			fmt.Println("🔄 Would execute: gunzip and SQL client to run script (database type unknown)")
+		}
 	case "Cluster Backup (.tar.gz)":
 		fmt.Println("🔄 Would execute: Extract and restore cluster backup")
 		fmt.Println("   Steps:")
@@ -404,19 +423,23 @@ func runRestore(ctx context.Context, archiveName string) error {
 	default:
 		return fmt.Errorf("unsupported archive type: %s", archiveType)
 	}
-	
+
 	fmt.Println()
 	fmt.Println("🛡️  SAFETY MODE: Restore command is in preview mode.")
 	fmt.Println("   This shows what would be executed without making changes.")
 	fmt.Println("   To enable actual restore, add --confirm flag (not yet implemented).")
-	
+
 	return nil
 }
 
 func detectArchiveType(filename string) string {
 	switch {
+	case strings.HasSuffix(filename, ".dump.gz"):
+		return "Single Database (.dump.gz)"
 	case strings.HasSuffix(filename, ".dump"):
 		return "Single Database (.dump)"
+	case strings.HasSuffix(filename, ".sql.gz"):
+		return "SQL Script (.sql.gz)"
 	case strings.HasSuffix(filename, ".sql"):
 		return "SQL Script (.sql)"
 	case strings.HasSuffix(filename, ".tar.gz"):
@@ -433,33 +456,33 @@ func runVerify(ctx context.Context, archiveName string) error {
 	fmt.Println("==============================================================")
 	fmt.Println(" Backup Archive Verification")
 	fmt.Println("==============================================================")
-	
+
 	// Construct full path to archive
 	archivePath := filepath.Join(cfg.BackupDir, archiveName)
-	
+
 	// Check if archive exists
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
 		return fmt.Errorf("backup archive not found: %s", archivePath)
 	}
-	
+
 	// Get archive info
 	stat, err := os.Stat(archivePath)
 	if err != nil {
 		return fmt.Errorf("cannot access archive: %w", err)
 	}
-	
+
 	fmt.Printf("Archive: %s\n", archiveName)
 	fmt.Printf("Size: %s\n", formatFileSize(stat.Size()))
 	fmt.Printf("Created: %s\n", stat.ModTime().Format("2006-01-02 15:04:05"))
 	fmt.Println()
-	
+
 	// Detect and verify based on archive type
 	archiveType := detectArchiveType(archiveName)
 	fmt.Printf("Type: %s\n", archiveType)
-	
+
 	checksRun := 0
 	checksPassed := 0
-	
+
 	// Basic file existence and readability
 	fmt.Print("📁 File accessibility... ")
 	if file, err := os.Open(archivePath); err != nil {
@@ -470,7 +493,7 @@ func runVerify(ctx context.Context, archiveName string) error {
 		checksPassed++
 	}
 	checksRun++
-	
+
 	// File size sanity check
 	fmt.Print("📏 File size check... ")
 	if stat.Size() == 0 {
@@ -483,7 +506,7 @@ func runVerify(ctx context.Context, archiveName string) error {
 		checksPassed++
 	}
 	checksRun++
-	
+
 	// Type-specific verification
 	switch archiveType {
 	case "Single Database (.dump)":
@@ -495,7 +518,17 @@ func runVerify(ctx context.Context, archiveName string) error {
 			checksPassed++
 		}
 		checksRun++
-		
+
+	case "Single Database (.dump.gz)":
+		fmt.Print("🔍 PostgreSQL dump format check (gzip)... ")
+		if err := verifyPgDumpGzip(archivePath); err != nil {
+			fmt.Printf("❌ FAILED: %v\n", err)
+		} else {
+			fmt.Println("✅ PASSED")
+			checksPassed++
+		}
+		checksRun++
+
 	case "SQL Script (.sql)":
 		fmt.Print("📜 SQL script validation... ")
 		if err := verifySqlScript(archivePath); err != nil {
@@ -505,7 +538,17 @@ func runVerify(ctx context.Context, archiveName string) error {
 			checksPassed++
 		}
 		checksRun++
-		
+
+	case "SQL Script (.sql.gz)":
+		fmt.Print("📜 SQL script validation (gzip)... ")
+		if err := verifyGzipSqlScript(archivePath); err != nil {
+			fmt.Printf("❌ FAILED: %v\n", err)
+		} else {
+			fmt.Println("✅ PASSED")
+			checksPassed++
+		}
+		checksRun++
+
 	case "Cluster Backup (.tar.gz)":
 		fmt.Print("📦 Archive extraction test... ")
 		if err := verifyTarGz(archivePath); err != nil {
@@ -516,7 +559,7 @@ func runVerify(ctx context.Context, archiveName string) error {
 		}
 		checksRun++
 	}
-	
+
 	// Check for metadata file
 	metadataPath := archivePath + ".info"
 	fmt.Print("📋 Metadata file check... ")
@@ -527,10 +570,10 @@ func runVerify(ctx context.Context, archiveName string) error {
 		checksPassed++
 	}
 	checksRun++
-	
+
 	fmt.Println()
 	fmt.Printf("Verification Results: %d/%d checks passed\n", checksPassed, checksRun)
-	
+
 	if checksPassed == checksRun {
 		fmt.Println("🎉 Archive verification completed successfully!")
 		return nil
@@ -550,19 +593,42 @@ func verifyPgDump(path string) error {
 		return err
 	}
 	defer file.Close()
-	
-	buffer := make([]byte, 100)
+
+	buffer := make([]byte, 512)
 	n, err := file.Read(buffer)
-	if err != nil && n == 0 {
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read file: %w", err)
+	}
+	if n == 0 {
 		return fmt.Errorf("cannot read file")
 	}
-	
-	content := string(buffer[:n])
-	if strings.Contains(content, "PostgreSQL") || strings.Contains(content, "pg_dump") {
-		return nil
+
+	return checkPgDumpSignature(buffer[:n])
+}
+
+func verifyPgDumpGzip(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
 	}
-	
-	return fmt.Errorf("does not appear to be a PostgreSQL dump file")
+	defer file.Close()
+
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to open gzip stream: %w", err)
+	}
+	defer gz.Close()
+
+	buffer := make([]byte, 512)
+	n, err := gz.Read(buffer)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read gzip contents: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("gzip archive is empty")
+	}
+
+	return checkPgDumpSignature(buffer[:n])
 }
 
 func verifySqlScript(path string) error {
@@ -572,22 +638,49 @@ func verifySqlScript(path string) error {
 		return err
 	}
 	defer file.Close()
-	
-	buffer := make([]byte, 500)
+
+	buffer := make([]byte, 1024)
 	n, err := file.Read(buffer)
-	if err != nil && n == 0 {
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read file: %w", err)
+	}
+	if n == 0 {
 		return fmt.Errorf("cannot read file")
 	}
-	
-	content := strings.ToLower(string(buffer[:n]))
-	sqlKeywords := []string{"select", "insert", "create", "drop", "alter", "database", "table"}
-	
-	for _, keyword := range sqlKeywords {
-		if strings.Contains(content, keyword) {
-			return nil
-		}
+
+	if containsSQLKeywords(strings.ToLower(string(buffer[:n]))) {
+		return nil
 	}
-	
+
+	return fmt.Errorf("does not appear to contain SQL content")
+}
+
+func verifyGzipSqlScript(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to open gzip stream: %w", err)
+	}
+	defer gz.Close()
+
+	buffer := make([]byte, 1024)
+	n, err := gz.Read(buffer)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read gzip contents: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("gzip archive is empty")
+	}
+
+	if containsSQLKeywords(strings.ToLower(string(buffer[:n]))) {
+		return nil
+	}
+
 	return fmt.Errorf("does not appear to contain SQL content")
 }
 
@@ -598,17 +691,67 @@ func verifyTarGz(path string) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	// Check if it starts with gzip magic number
 	buffer := make([]byte, 3)
 	n, err := file.Read(buffer)
 	if err != nil || n < 3 {
 		return fmt.Errorf("cannot read file header")
 	}
-	
+
 	if buffer[0] == 0x1f && buffer[1] == 0x8b {
 		return nil // Valid gzip header
 	}
-	
+
 	return fmt.Errorf("does not appear to be a valid gzip file")
+}
+
+func checkPgDumpSignature(data []byte) error {
+	if len(data) >= 5 && string(data[:5]) == "PGDMP" {
+		return nil
+	}
+
+	content := strings.ToLower(string(data))
+	if strings.Contains(content, "postgresql") || strings.Contains(content, "pg_dump") {
+		return nil
+	}
+
+	return fmt.Errorf("does not appear to be a PostgreSQL dump file")
+}
+
+func containsSQLKeywords(content string) bool {
+	sqlKeywords := []string{"select", "insert", "create", "drop", "alter", "database", "table", "update", "delete"}
+
+	for _, keyword := range sqlKeywords {
+		if strings.Contains(content, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func mysqlRestoreCommand(archivePath string, compressed bool) string {
+	parts := []string{
+		"mysql",
+		"-h", cfg.Host,
+		"-P", fmt.Sprintf("%d", cfg.Port),
+		"-u", cfg.User,
+	}
+
+	if cfg.Password != "" {
+		parts = append(parts, fmt.Sprintf("-p'%s'", cfg.Password))
+	}
+
+	if cfg.Database != "" {
+		parts = append(parts, cfg.Database)
+	}
+
+	command := strings.Join(parts, " ")
+
+	if compressed {
+		return fmt.Sprintf("gunzip -c %s | %s", archivePath, command)
+	}
+
+	return fmt.Sprintf("%s < %s", command, archivePath)
 }
