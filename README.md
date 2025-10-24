@@ -254,6 +254,22 @@ dbbackup cpu
 | `--ssl-mode` | SSL mode | `prefer` | `--ssl-mode require` |
 | `--insecure` | Disable SSL | `false` | `--insecure` |
 
+### PostgreSQL Options
+
+- Use the built-in `postgres` role whenever possible (`sudo -u postgres dbbackup ...`) so `pg_dump`/`pg_restore` inherit the right permissions.
+- `--db-type postgres` is the default; include it explicitly when running mixed test suites or automation.
+- `--ssl-mode` accepts PostgreSQL modes (`disable`, `prefer`, `require`, `verify-ca`, `verify-full`). Leave unset for local socket connections or set to `require` for TLS-only environments.
+- Add `--insecure` to force `sslmode=disable` when working against local clusters or CI containers without certificates.
+- Cluster operations (`backup cluster`, `restore`, `verify`) are PostgreSQL-only; the command will validate the target type before executing.
+
+### MySQL / MariaDB Options
+
+- Set `--db-type mysql` (or `mariadb`) to load the MySQL driver; the tool normalizes either value.
+- Provide connection parameters explicitly: `--host 127.0.0.1 --port 3306 --user backup_user --password **** --database backup_demo`.
+- The `--password` flag passes credentials to both `mysql` and `mysqldump`; alternatively export `MYSQL_PWD` for non-interactive runs.
+- Use `--insecure` to emit `--skip-ssl` for servers without TLS. When TLS is required, choose `--ssl-mode require|verify-ca|verify-identity`.
+- MySQL backups are emitted as `.sql.gz` files; restore previews display the exact `gunzip | mysql` pipeline that will execute once `--confirm` support is introduced.
+
 ### Environment Variables
 
 ```bash

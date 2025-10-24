@@ -155,6 +155,20 @@ dbbackup backup cluster --jobs 16 --dump-jobs 8 --max-cores 32
 | `--jobs` | Parallel jobs | `--jobs 8` |
 | `--debug` | Debug mode | `--debug` |
 
+### PostgreSQL Quick Options
+
+- Default target is PostgreSQL; explicitly add `--db-type postgres` when switching between engines in scripts.
+- Run as the `postgres` OS user for local clusters: `sudo -u postgres dbbackup ...` ensures socket authentication succeeds.
+- Pick an SSL strategy: omit `--ssl-mode` for local sockets, use `--ssl-mode require` (or stricter) for remote TLS, or `--insecure` to disable TLS.
+- Cluster backups (`backup cluster`) and plain `.dump` restores are PostgreSQL-only operations.
+
+### MySQL / MariaDB Quick Options
+
+- Select the engine with `--db-type mysql` (or `mariadb`); supply `--host`, `--port 3306`, `--user`, `--password`, and `--database` explicitly.
+- Use `--insecure` to emit `--skip-ssl`; choose `--ssl-mode require|verify-ca|verify-identity` when TLS is mandatory.
+- MySQL dumps are gzipped SQL scripts (`*.sql.gz`); the restore preview shows `gunzip -c ... | mysql` so you know the exact pipeline.
+- Credentials can also come from `MYSQL_PWD` or option files if you prefer not to use the `--password` flag.
+
 ## 📁 Available Binaries
 
 Choose the right binary for your platform:
