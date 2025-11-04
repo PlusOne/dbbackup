@@ -318,16 +318,32 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		// For cluster backups, use settings optimized for large databases:
 		// - Lower compression (faster, less memory)
 		// - Use parallel dumps if configured
-		// - Custom format with moderate compression
+		// - Smart format selection based on size
+		
 		compressionLevel := e.cfg.CompressionLevel
 		if compressionLevel > 6 {
 			compressionLevel = 6 // Cap at 6 for cluster backups to reduce memory
 		}
 		
+		// Determine optimal format based on database size
+		format := "custom"
+		parallel := e.cfg.DumpJobs
+		
+		// For large databases (>5GB), use plain format with external compression
+		// This avoids pg_dump's custom format memory overhead
+		if size, err := e.db.GetDatabaseSize(ctx, dbName); err == nil {
+			if size > 5*1024*1024*1024 { // > 5GB
+				format = "plain"        // Plain SQL format
+				compressionLevel = 0    // Disable pg_dump compression
+				parallel = 0            // Plain format doesn't support parallel
+				e.printf("       Using plain format + external compression (optimal for large DBs)\n")
+			}
+		}
+		
 		options := database.BackupOptions{
 			Compression:  compressionLevel,
-			Parallel:     e.cfg.DumpJobs, // Use parallel dumps for large databases
-			Format:       "custom",
+			Parallel:     parallel,
+			Format:       format,
 			Blobs:        true,
 			NoOwner:      false,
 			NoPrivileges: false,
@@ -749,7 +765,7 @@ func (e *Engine) createMetadata(backupFile, database, backupType, strategy strin
 	return os.WriteFile(metaFile, []byte(content), 0644)
 }
 
-// executeCommand executes a backup command (simplified version for cluster backups)
+// executeCommand executes a backup command (optimized for huge databases)
 func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFile string) error {
 	if len(cmdArgs) == 0 {
 		return fmt.Errorf("empty command")
@@ -757,6 +773,31 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	
 	e.log.Debug("Executing backup command", "cmd", cmdArgs[0], "args", cmdArgs[1:])
 	
+	// Check if this is a plain format dump (for large databases)
+	isPlainFormat := false
+	needsExternalCompression := false
+	
+	for i, arg := range cmdArgs {
+		if arg == "--format=plain" || arg == "-Fp" {
+			isPlainFormat = true
+		}
+		if arg == "--compress=0" || (arg == "--compress" && i+1 < len(cmdArgs) && cmdArgs[i+1] == "0") {
+			needsExternalCompression = true
+		}
+	}
+	
+	// For MySQL, handle compression differently
+	if e.cfg.IsMySQL() && e.cfg.CompressionLevel > 0 {
+		return e.executeMySQLWithCompression(ctx, cmdArgs, outputFile)
+	}
+	
+	// For plain format with large databases, use streaming compression
+	if isPlainFormat && needsExternalCompression {
+		return e.executeWithStreamingCompression(ctx, cmdArgs, outputFile)
+	}
+	
+	// For custom format, pg_dump handles everything (writes directly to file)
+	// NO GO BUFFERING - pg_dump writes directly to disk
 	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
 	
 	// Set environment variables for database tools
@@ -767,11 +808,6 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 		} else if e.cfg.IsMySQL() {
 			cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
 		}
-	}
-	
-	// For MySQL, handle compression differently
-	if e.cfg.IsMySQL() && e.cfg.CompressionLevel > 0 {
-		return e.executeMySQLWithCompression(ctx, cmdArgs, outputFile)
 	}
 	
 	// Stream stderr to avoid memory issues with large databases
@@ -803,6 +839,102 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 		return fmt.Errorf("backup command failed: %w", err)
 	}
 	
+	return nil
+}
+
+// executeWithStreamingCompression handles plain format dumps with external compression
+// Uses: pg_dump | pigz > file.sql.gz (zero-copy streaming)
+func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
+	e.log.Debug("Using streaming compression for large database")
+	
+	// Modify output file to have .sql.gz extension
+	compressedFile := strings.TrimSuffix(outputFile, ".dump") + ".sql.gz"
+	
+	// Create pg_dump command
+	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	dumpCmd.Env = os.Environ()
+	if e.cfg.Password != "" && e.cfg.IsPostgreSQL() {
+		dumpCmd.Env = append(dumpCmd.Env, "PGPASSWORD="+e.cfg.Password)
+	}
+	
+	// Check for pigz (parallel gzip)
+	compressor := "gzip"
+	compressorArgs := []string{"-c"}
+	
+	if _, err := exec.LookPath("pigz"); err == nil {
+		compressor = "pigz"
+		compressorArgs = []string{"-p", strconv.Itoa(e.cfg.Jobs), "-c"}
+		e.log.Debug("Using pigz for parallel compression", "threads", e.cfg.Jobs)
+	}
+	
+	// Create compression command
+	compressCmd := exec.CommandContext(ctx, compressor, compressorArgs...)
+	
+	// Create output file
+	outFile, err := os.Create(compressedFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+	
+	// Set up pipeline: pg_dump | pigz > file.sql.gz
+	dumpStdout, err := dumpCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create dump stdout pipe: %w", err)
+	}
+	
+	compressCmd.Stdin = dumpStdout
+	compressCmd.Stdout = outFile
+	
+	// Capture stderr from both commands
+	dumpStderr, _ := dumpCmd.StderrPipe()
+	compressStderr, _ := compressCmd.StderrPipe()
+	
+	// Stream stderr output
+	go func() {
+		scanner := bufio.NewScanner(dumpStderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line != "" {
+				e.log.Debug("pg_dump", "output", line)
+			}
+		}
+	}()
+	
+	go func() {
+		scanner := bufio.NewScanner(compressStderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line != "" {
+				e.log.Debug("compression", "output", line)
+			}
+		}
+	}()
+	
+	// Start compression first
+	if err := compressCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start compressor: %w", err)
+	}
+	
+	// Then start pg_dump
+	if err := dumpCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start pg_dump: %w", err)
+	}
+	
+	// Wait for pg_dump to complete
+	if err := dumpCmd.Wait(); err != nil {
+		return fmt.Errorf("pg_dump failed: %w", err)
+	}
+	
+	// Close stdout pipe to signal compressor we're done
+	dumpStdout.Close()
+	
+	// Wait for compression to complete
+	if err := compressCmd.Wait(); err != nil {
+		return fmt.Errorf("compression failed: %w", err)
+	}
+	
+	e.log.Debug("Streaming compression completed", "output", compressedFile)
 	return nil
 }
 
