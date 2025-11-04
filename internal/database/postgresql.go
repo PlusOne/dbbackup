@@ -2,20 +2,25 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx)
 )
 
 // PostgreSQL implements Database interface for PostgreSQL
 type PostgreSQL struct {
 	baseDatabase
+	pool *pgxpool.Pool // Native pgx connection pool for better performance
 }
 
 // NewPostgreSQL creates a new PostgreSQL database instance
@@ -28,36 +33,62 @@ func NewPostgreSQL(cfg *config.Config, log logger.Logger) *PostgreSQL {
 	}
 }
 
-// Connect establishes a connection to PostgreSQL
+// Connect establishes a connection to PostgreSQL using pgx for better performance
 func (p *PostgreSQL) Connect(ctx context.Context) error {
-	// Build PostgreSQL DSN
-	dsn := p.buildDSN()
+	// Build PostgreSQL DSN (pgx format)
+	dsn := p.buildPgxDSN()
 	p.dsn = dsn
 	
-	p.log.Debug("Connecting to PostgreSQL", "dsn", sanitizeDSN(dsn))
+	p.log.Debug("Connecting to PostgreSQL with pgx", "dsn", sanitizeDSN(dsn))
 	
-	db, err := sql.Open("postgres", dsn)
+	// Parse config with optimizations for large databases
+	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return fmt.Errorf("failed to open PostgreSQL connection: %w", err)
+		return fmt.Errorf("failed to parse pgx config: %w", err)
 	}
 	
-	// Configure connection pool
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(0)
+	// Optimize connection pool for backup workloads
+	config.MaxConns = 10                          // Max concurrent connections
+	config.MinConns = 2                           // Keep minimum connections ready
+	config.MaxConnLifetime = 0                    // No limit on connection lifetime
+	config.MaxConnIdleTime = 0                    // No idle timeout
+	config.HealthCheckPeriod = 1 * time.Minute    // Health check every minute
+	
+	// Optimize for large query results (BLOB data)
+	config.ConnConfig.RuntimeParams["work_mem"] = "64MB"
+	config.ConnConfig.RuntimeParams["maintenance_work_mem"] = "256MB"
+	
+	// Create connection pool
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to create pgx pool: %w", err)
+	}
 	
 	// Test connection
-	timeoutCtx, cancel := buildTimeout(ctx, 0)
-	defer cancel()
-	
-	if err := db.PingContext(timeoutCtx); err != nil {
-		db.Close()
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return fmt.Errorf("failed to ping PostgreSQL: %w", err)
 	}
 	
+	// Also create stdlib connection for compatibility
+	db := stdlib.OpenDBFromPool(pool)
+	
+	p.pool = pool
 	p.db = db
-	p.log.Info("Connected to PostgreSQL successfully")
+	p.log.Info("Connected to PostgreSQL successfully", "driver", "pgx", "max_conns", config.MaxConns)
 	return nil
+}
+
+// Close closes both the pgx pool and stdlib connection
+func (p *PostgreSQL) Close() error {
+	var err error
+	if p.pool != nil {
+		p.pool.Close()
+	}
+	if p.db != nil {
+		err = p.db.Close()
+	}
+	return err
 }
 
 // ListDatabases returns list of non-template databases
@@ -407,6 +438,105 @@ func (p *PostgreSQL) buildDSN() string {
 	}
 	
 	return dsn
+}
+
+// buildPgxDSN builds a connection string for pgx (supports URL format)
+func (p *PostgreSQL) buildPgxDSN() string {
+	// pgx supports both URL and keyword=value formats
+	// Use URL format for better compatibility and features
+	
+	var dsn strings.Builder
+	dsn.WriteString("postgres://")
+	
+	// User
+	dsn.WriteString(p.cfg.User)
+	
+	// Password
+	if p.cfg.Password != "" {
+		dsn.WriteString(":")
+		dsn.WriteString(p.cfg.Password)
+	}
+	
+	dsn.WriteString("@")
+	
+	// Host and Port
+	if p.cfg.Host == "localhost" && p.cfg.Password == "" {
+		// Try Unix socket for peer authentication
+		socketDirs := []string{
+			"/var/run/postgresql",
+			"/tmp",
+			"/var/lib/pgsql",
+		}
+		
+		socketFound := false
+		for _, dir := range socketDirs {
+			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, p.cfg.Port)
+			if _, err := os.Stat(socketPath); err == nil {
+				dsn.WriteString(dir)
+				p.log.Debug("Using PostgreSQL socket", "path", socketPath)
+				socketFound = true
+				break
+			}
+		}
+		
+		if !socketFound {
+			// Fallback to TCP localhost
+			dsn.WriteString(p.cfg.Host)
+			dsn.WriteString(":")
+			dsn.WriteString(strconv.Itoa(p.cfg.Port))
+		}
+	} else {
+		// TCP connection
+		dsn.WriteString(p.cfg.Host)
+		dsn.WriteString(":")
+		dsn.WriteString(strconv.Itoa(p.cfg.Port))
+	}
+	
+	// Database
+	dsn.WriteString("/")
+	dsn.WriteString(p.cfg.Database)
+	
+	// Parameters
+	params := make([]string, 0)
+	
+	// SSL Mode
+	if p.cfg.Insecure {
+		params = append(params, "sslmode=disable")
+	} else if p.cfg.SSLMode != "" {
+		sslMode := strings.ToLower(p.cfg.SSLMode)
+		switch sslMode {
+		case "prefer", "preferred":
+			params = append(params, "sslmode=prefer")
+		case "require", "required":
+			params = append(params, "sslmode=require")
+		case "verify-ca":
+			params = append(params, "sslmode=verify-ca")
+		case "verify-full", "verify-identity":
+			params = append(params, "sslmode=verify-full")
+		case "disable", "disabled":
+			params = append(params, "sslmode=disable")
+		default:
+			params = append(params, "sslmode=prefer")
+		}
+	} else {
+		params = append(params, "sslmode=prefer")
+	}
+	
+	// Connection pool settings
+	params = append(params, "pool_max_conns=10")
+	params = append(params, "pool_min_conns=2")
+	
+	// Performance tuning for large queries
+	params = append(params, "application_name=dbbackup")
+	params = append(params, "connect_timeout=30")
+	
+	// Add parameters to DSN
+	if len(params) > 0 {
+		dsn.WriteString("?")
+		dsn.WriteString(strings.Join(params, "&"))
+	}
+	
+	return dsn.String()
 }
 
 // sanitizeDSN removes password from DSN for logging

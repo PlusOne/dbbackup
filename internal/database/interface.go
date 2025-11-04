@@ -9,8 +9,8 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 	
-	_ "github.com/lib/pq"           // PostgreSQL driver
-	_ "github.com/go-sql-driver/mysql" // MySQL driver
+	_ "github.com/jackc/pgx/v5/stdlib"     // PostgreSQL driver (pgx - high performance)
+	_ "github.com/go-sql-driver/mysql"     // MySQL driver
 )
 
 // Database represents a database connection and operations
