@@ -88,7 +88,9 @@ type backupCompleteMsg struct {
 
 func executeBackupWithTUIProgress(cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int, reporter *TUIProgressReporter) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			// Use configurable cluster timeout (minutes) from config; default set in config.New()
+			clusterTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
+			ctx, cancel := context.WithTimeout(context.Background(), clusterTimeout)
 		defer cancel()
 
 		start := time.Now()

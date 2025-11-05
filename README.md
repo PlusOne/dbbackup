@@ -353,6 +353,9 @@ export MAX_CORES=16
 # Backup settings
 export BACKUP_DIR=/var/backups
 export COMPRESS_LEVEL=6
+# Cluster backup timeout in minutes (controls overall cluster operation timeout)
+# Default: 240 (4 hours)
+export CLUSTER_TIMEOUT_MIN=240
 ```
 
 ## 🏗️ Architecture

@@ -54,6 +54,8 @@ type Config struct {
 	// Single database backup/restore
 	SingleDBName  string
 	RestoreDBName string
+	// Timeouts (in minutes)
+	ClusterTimeoutMinutes int
 }
 
 // New creates a new configuration with default values
@@ -129,6 +131,9 @@ func New() *Config {
 		// Single database options
 		SingleDBName:  getEnvString("SINGLE_DB_NAME", ""),
 		RestoreDBName: getEnvString("RESTORE_DB_NAME", ""),
+
+		// Timeouts
+		ClusterTimeoutMinutes: getEnvInt("CLUSTER_TIMEOUT_MIN", 240),
 	}
 
 	// Ensure canonical defaults are enforced
