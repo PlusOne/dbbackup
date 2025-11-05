@@ -227,24 +227,27 @@ func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	// Column 3: Message
 	output.WriteString(entry.Message)
 	
-	// Append important fields in a clean format (skip internal fields)
+	// Append important fields in a clean format (skip internal/redundant fields)
 	if len(entry.Data) > 0 {
+		// Only show truly important fields, skip verbose ones
 		for k, v := range entry.Data {
-			// Skip noisy internal fields
-			if k == "elapsed" || k == "operation_id" || k == "step" || k == "timestamp" {
+			// Skip noisy internal fields and redundant message field
+			if k == "elapsed" || k == "operation_id" || k == "step" || k == "timestamp" || k == "message" {
 				continue
 			}
 			
-			// Format duration nicely
+			// Format duration nicely at the end
 			if k == "duration" {
 				if str, ok := v.(string); ok {
-					output.WriteString(fmt.Sprintf(" [duration: %s]", str))
+					output.WriteString(fmt.Sprintf(" (%s)", str))
 				}
 				continue
 			}
 			
-			// Add other fields
-			output.WriteString(fmt.Sprintf(" %s=%v", k, v))
+			// Only show critical fields (driver, errors, etc)
+			if k == "driver" || k == "max_conns" || k == "error" || k == "database" {
+				output.WriteString(fmt.Sprintf(" %s=%v", k, v))
+			}
 		}
 	}
 	
