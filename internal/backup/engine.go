@@ -18,6 +18,7 @@ import (
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
+	"dbbackup/internal/swap"
 )
 
 // Engine handles backup operations
@@ -251,6 +252,31 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	}
 	
 	operation := e.log.StartOperation("Cluster Backup")
+	
+	// Setup swap file if configured
+	var swapMgr *swap.Manager
+	if e.cfg.AutoSwap && e.cfg.SwapFileSizeGB > 0 {
+		swapMgr = swap.NewManager(e.cfg.SwapFilePath, e.cfg.SwapFileSizeGB, e.log)
+		
+		if swapMgr.IsSupported() {
+			e.log.Info("Setting up temporary swap file for large backup", 
+				"path", e.cfg.SwapFilePath, 
+				"size_gb", e.cfg.SwapFileSizeGB)
+			
+			if err := swapMgr.Setup(); err != nil {
+				e.log.Warn("Failed to setup swap file (continuing without it)", "error", err)
+			} else {
+				// Ensure cleanup on exit
+				defer func() {
+					if err := swapMgr.Cleanup(); err != nil {
+						e.log.Warn("Failed to cleanup swap file", "error", err)
+					}
+				}()
+			}
+		} else {
+			e.log.Warn("Swap file management not supported on this platform", "os", swapMgr)
+		}
+	}
 	
 	// Use a quiet progress indicator to avoid duplicate messages
 	quietProgress := progress.NewQuietLineByLine()

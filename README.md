@@ -356,6 +356,12 @@ export COMPRESS_LEVEL=6
 # Cluster backup timeout in minutes (controls overall cluster operation timeout)
 # Default: 240 (4 hours)
 export CLUSTER_TIMEOUT_MIN=240
+
+# Swap file management (Linux only, requires root)
+# Automatically create temporary swap file for large backups to prevent OOM kills
+export AUTO_SWAP=false               # Enable automatic swap management
+export SWAP_FILE_SIZE_GB=8           # Swap file size in GB (0 = disabled)
+export SWAP_FILE_PATH=/tmp/dbbackup_swap  # Path to temporary swap file
 ```
 
 ## 🏗️ Architecture
@@ -476,6 +482,48 @@ dbbackup cpu
 # Try different workload types
 dbbackup backup single mydb --cpu-workload io-intensive
 ```
+
+#### Out of Memory (OOM) Issues
+
+If backups are being killed by the system with "signal: killed" errors:
+
+```bash
+# Check kernel logs for OOM killer events
+dmesg --ctime | grep -i -E "oom|kill|memory"
+journalctl -k --since "1 hour ago" | grep -i oom
+
+# Check current memory and swap
+free -h
+swapon --show
+
+# Option 1: Enable automatic swap file management (Linux + root only)
+export AUTO_SWAP=true
+export SWAP_FILE_SIZE_GB=8
+sudo dbbackup backup cluster
+
+# Option 2: Manually add swap before backup
+sudo fallocate -l 8G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+# Run your backup
+dbbackup backup cluster
+# Cleanup after
+sudo swapoff /swapfile
+sudo rm /swapfile
+
+# Option 3: Reduce memory usage
+export DUMP_JOBS=2           # Fewer parallel jobs
+export COMPRESS_LEVEL=3      # Lower compression
+dbbackup backup cluster
+```
+
+**Note**: Automatic swap management (`AUTO_SWAP=true`) requires:
+- Linux operating system
+- Root privileges (run with `sudo`)
+- Available disk space for the swap file
+
+The tool will automatically create, enable, and cleanup the temporary swap file during cluster backups.
 
 ### Debug Mode
 

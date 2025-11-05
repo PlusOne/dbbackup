@@ -56,6 +56,11 @@ type Config struct {
 	RestoreDBName string
 	// Timeouts (in minutes)
 	ClusterTimeoutMinutes int
+
+	// Swap file management (for large backups)
+	SwapFilePath   string // Path to temporary swap file
+	SwapFileSizeGB int    // Size in GB (0 = disabled)
+	AutoSwap       bool   // Automatically manage swap for large backups
 }
 
 // New creates a new configuration with default values
@@ -134,6 +139,11 @@ func New() *Config {
 
 		// Timeouts
 		ClusterTimeoutMinutes: getEnvInt("CLUSTER_TIMEOUT_MIN", 240),
+
+		// Swap file management
+		SwapFilePath:   getEnvString("SWAP_FILE_PATH", "/tmp/dbbackup_swap"),
+		SwapFileSizeGB: getEnvInt("SWAP_FILE_SIZE_GB", 0), // 0 = disabled by default
+		AutoSwap:       getEnvBool("AUTO_SWAP", false),
 	}
 
 	// Ensure canonical defaults are enforced
