@@ -46,12 +46,9 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 }
 
 func (m BackupExecutionModel) Init() tea.Cmd {
-	reporter := NewTUIProgressReporter()
-	// Note: Progress updates are handled through the model's internal state
-	// No need for callbacks that print to screen - the View() handles all display
-
+	// TUI handles all display through View() - no progress callbacks needed
 	return tea.Batch(
-		executeBackupWithTUIProgress(m.config, m.logger, m.backupType, m.databaseName, m.ratio, reporter),
+		executeBackupWithTUIProgress(m.config, m.logger, m.backupType, m.databaseName, m.ratio),
 		backupTickCmd(),
 	)
 }
@@ -75,7 +72,7 @@ type backupCompleteMsg struct {
 	err    error
 }
 
-func executeBackupWithTUIProgress(cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int, reporter *TUIProgressReporter) tea.Cmd {
+func executeBackupWithTUIProgress(cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
 	return func() tea.Msg {
 			// Use configurable cluster timeout (minutes) from config; default set in config.New()
 			clusterTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
@@ -100,7 +97,8 @@ func executeBackupWithTUIProgress(cfg *config.Config, log logger.Logger, backupT
 			}
 		}
 
-		engine := backup.NewSilent(cfg, log, dbClient, reporter)
+		// Pass nil as indicator - TUI itself handles all display, no stdout printing
+		engine := backup.NewSilent(cfg, log, dbClient, nil)
 
 		var backupErr error
 		switch backupType {
