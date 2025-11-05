@@ -506,7 +506,7 @@ Released under MIT License. See LICENSE file for details.
 
 ## 🤝 Contributing
 
-1. Fork the repository
+1. Fork the repository at https://git.uuxo.net/uuxo/dbbackup
 2. Create a feature branch
 3. Make your changes
 4. Add tests if applicable
@@ -514,9 +514,9 @@ Released under MIT License. See LICENSE file for details.
 
 ## 🆘 Support
 
-- **Issues**: Report bugs and feature requests via GitHub Issues
-- **Documentation**: Check the `bin/README.md` for binary-specific information
-- **Examples**: See the `examples/` directory for more usage examples
+- **Issues**: Report bugs and feature requests at https://git.uuxo.net/uuxo/dbbackup/issues
+- **Repository**: https://git.uuxo.net/uuxo/dbbackup
+- **Documentation**: Check the documentation files for detailed information
 
 ---
 
