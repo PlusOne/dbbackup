@@ -67,7 +67,8 @@ func New(level, format string) Logger {
 	case "json":
 		l.SetFormatter(&logrus.JSONFormatter{})
 	default:
-		l.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+		// Use custom clean formatter for human-readable output
+		l.SetFormatter(&CleanFormatter{})
 	}
 
 	return &logger{
@@ -181,6 +182,65 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
+// CleanFormatter formats log entries in a clean, human-readable format
+type CleanFormatter struct{}
+
+// Format implements logrus.Formatter interface
+func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+	timestamp := entry.Time.Format("2006-01-02T15:04:05")
+	level := strings.ToUpper(entry.Level.String())
+	
+	// Color codes for different log levels
+	var levelColor string
+	switch entry.Level {
+	case logrus.DebugLevel:
+		levelColor = "\033[36m" // Cyan
+		level = "DEBUG"
+	case logrus.InfoLevel:
+		levelColor = "\033[32m" // Green
+		level = "INFO"
+	case logrus.WarnLevel:
+		levelColor = "\033[33m" // Yellow
+		level = "WARN"
+	case logrus.ErrorLevel:
+		levelColor = "\033[31m" // Red
+		level = "ERROR"
+	default:
+		levelColor = "\033[0m" // Reset
+	}
+	resetColor := "\033[0m"
+	
+	// Build the message
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("%s[%s]%s ", levelColor, level, resetColor))
+	output.WriteString(fmt.Sprintf("[%s] ", timestamp))
+	output.WriteString(entry.Message)
+	
+	// Append important fields in a clean format (skip internal fields)
+	if len(entry.Data) > 0 {
+		for k, v := range entry.Data {
+			// Skip noisy internal fields
+			if k == "elapsed" || k == "operation_id" || k == "step" {
+				continue
+			}
+			
+			// Format duration nicely
+			if k == "duration" {
+				if str, ok := v.(string); ok {
+					output.WriteString(fmt.Sprintf(" [duration: %s]", str))
+				}
+				continue
+			}
+			
+			// Add other fields
+			output.WriteString(fmt.Sprintf(" %s=%v", k, v))
+		}
+	}
+	
+	output.WriteString("\n")
+	return []byte(output.String()), nil
+}
+
 // FileLogger creates a logger that writes to both stdout and a file
 func FileLogger(level, format, filename string) (Logger, error) {
 	var logLevel logrus.Level
@@ -214,7 +274,8 @@ func FileLogger(level, format, filename string) (Logger, error) {
 	case "json":
 		l.SetFormatter(&logrus.JSONFormatter{})
 	default:
-		l.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+		// Use custom clean formatter for human-readable output
+		l.SetFormatter(&CleanFormatter{})
 	}
 
 	return &logger{
