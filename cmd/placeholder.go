@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/logger"
 	"dbbackup/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -58,8 +59,9 @@ var interactiveCmd = &cobra.Command{
 	Long:    `Start the interactive menu system for guided backup operations.`,
 	Aliases: []string{"menu", "ui"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Start the interactive TUI
-		return tui.RunInteractiveMenu(cfg, log)
+		// Start the interactive TUI with silent logger to prevent console output conflicts
+		silentLog := logger.NewSilent()
+		return tui.RunInteractiveMenu(cfg, silentLog)
 	},
 }
 

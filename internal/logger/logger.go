@@ -78,6 +78,20 @@ func New(level, format string) Logger {
 	}
 }
 
+// NewSilent creates a logger that discards all output (for TUI mode)
+func NewSilent() Logger {
+	l := logrus.New()
+	l.SetLevel(logrus.InfoLevel)
+	l.SetOutput(io.Discard) // Discard all log output
+	l.SetFormatter(&CleanFormatter{})
+
+	return &logger{
+		logrus: l,
+		level:  logrus.InfoLevel,
+		format: "text",
+	}
+}
+
 func (l *logger) Debug(msg string, args ...any) {
 	l.logWithFields(logrus.DebugLevel, msg, args...)
 }
