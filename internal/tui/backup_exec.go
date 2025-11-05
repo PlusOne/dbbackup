@@ -12,7 +12,6 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
-	"dbbackup/internal/progress"
 )
 
 // BackupExecutionModel handles backup execution with progress
@@ -48,18 +47,8 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 
 func (m BackupExecutionModel) Init() tea.Cmd {
 	reporter := NewTUIProgressReporter()
-	reporter.AddCallback(func(ops []progress.OperationStatus) {
-		if len(ops) == 0 {
-			return
-		}
-
-		latest := ops[len(ops)-1]
-		tea.Println(backupProgressMsg{
-			status:   latest.Message,
-			progress: latest.Progress,
-			detail:   latest.Status,
-		})
-	})
+	// Note: Progress updates are handled through the model's internal state
+	// No need for callbacks that print to screen - the View() handles all display
 
 	return tea.Batch(
 		executeBackupWithTUIProgress(m.config, m.logger, m.backupType, m.databaseName, m.ratio, reporter),
