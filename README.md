@@ -52,16 +52,21 @@ A comprehensive, high-performance database backup and restore solution with **mu
 
 ### 💡 **Smart Progress Features**
 ```bash
-# Live backup progress example
-🔄 Starting backup: postgres
-   [10%] Backup directory prepared
-   [20%] Generated backup filename
-   [30%] Backup command prepared
-   [40%] Starting database backup...
-   [80%] Database backup completed
-   [90%] Backup verified: 822 B
-   [100%] Backup operation completed successfully
-✅ ✅ Single database backup completed: db_postgres_20251024_185103.dump
+# Live cluster backup progress example
+🔄 Starting cluster backup (all databases)
+   Backing up global objects...
+   Getting database list...
+   Backing up 13 databases...
+   [1/13] Backing up database: backup_test_db
+       Database size: 84.1 MB
+   ✅ Completed backup_test_db (56.5 MB)
+   [2/13] Backing up database: postgres
+       Database size: 7.4 MB
+   ✅ Completed postgres (822 B)
+   ...
+   Backup summary: 13 succeeded, 0 failed
+   Creating compressed archive...
+✅ Cluster backup completed: cluster_20251105_102722.tar.gz (56.6 MB)
 ```
 
 ## 🚀 Key Features
@@ -103,31 +108,31 @@ Download the appropriate binary for your platform from the `bin/` directory:
 
 ```bash
 # Linux (Intel/AMD)
-curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_linux_amd64 -o dbbackup_linux_amd64
-chmod +x dbbackup_linux_amd64
-sudo mv dbbackup_linux_amd64 /usr/local/bin/dbbackup
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_amd64 -o dbbackup
+chmod +x dbbackup
+sudo mv dbbackup /usr/local/bin/dbbackup
 
 # macOS (Intel)
-curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_darwin_amd64 -o dbbackup_darwin_amd64
-chmod +x dbbackup_darwin_amd64
-sudo mv dbbackup_darwin_amd64 /usr/local/bin/dbbackup
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_amd64 -o dbbackup
+chmod +x dbbackup
+sudo mv dbbackup /usr/local/bin/dbbackup
 
 # macOS (Apple Silicon)
-curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_darwin_arm64 -o dbbackup_darwin_arm64
-chmod +x dbbackup_darwin_arm64
-sudo mv dbbackup_darwin_arm64 /usr/local/bin/dbbackup
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_arm64 -o dbbackup
+chmod +x dbbackup
+sudo mv dbbackup /usr/local/bin/dbbackup
 
 # Windows (download and rename)
-curl -L https://git.uuxo.net/renz/dbbackup/raw/branch/master/bin/dbbackup_windows_amd64.exe -o dbbackup_windows_amd64.exe
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_windows_amd64.exe -o dbbackup.exe
 # Use directly or move into PATH
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://git.uuxo.net/renz/dbbackup.git
+git clone https://git.uuxo.net/uuxo/dbbackup.git
 cd dbbackup
-go build -o dbbackup .
+go build -o dbbackup main.go
 ```
 
 ### Cross-Platform Build
@@ -139,60 +144,45 @@ go build -o dbbackup .
 
 ## 🖥️ Usage Examples
 
-### Interactive Mode with Progress Tracking (Recommended)
+### Interactive Mode (Recommended)
 
 ```bash
-# Start enhanced interactive interface with real-time progress
-dbbackup interactive --database your_database
+# Start interactive interface with menu system
+dbbackup interactive
 
-# Interactive mode with progress monitoring
-dbbackup menu --database postgres --host localhost --user postgres
-
-# Alternative UI command
-dbbackup ui --database myapp_db --progress
+# Alternative aliases (all equivalent)
+dbbackup menu
+dbbackup ui
 ```
+
+The interactive mode provides:
+- **Real-time progress tracking** with animated spinners
+- **Visual menu navigation** with arrow keys
+- **Database engine switching** using left/right arrows or pressing `t`
+- **Automatic status updates** without requiring keypresses
+- **Operation history** and active operation monitoring
 
 > 💡 In the interactive menu, use the left/right arrow keys (or press `t`) to switch the target engine between PostgreSQL and MySQL/MariaDB before launching an operation.
 
-### Enhanced Progress Tracking Commands
+### Progress Tracking in CLI Mode
 
-#### Real-Time Progress Monitoring
-
-```bash
-# Single backup with detailed progress tracking
-dbbackup backup single myapp_db --progress --verbose
-
-# Sample backup with progress indicators
-dbbackup backup sample myapp_db --sample-ratio 10 --progress
-
-# Cluster backup with comprehensive logging
-dbbackup backup cluster --progress --detailed --timestamps
-```
-
-#### Operation Status & History
+Progress tracking is automatically enabled for all backup operations in CLI mode:
 
 ```bash
-# View current operation status
-dbbackup status --detailed
+# Single database backup with automatic progress tracking
+dbbackup backup single myapp_db
 
-# Show operation history with metrics
-dbbackup status --history --performance
+# Sample backup (10% of data) with progress indicators
+dbbackup backup sample myapp_db --sample-ratio 10
 
-# Monitor active operations
-dbbackup status --active --refresh-interval 2s
-```
+# Cluster backup with comprehensive progress output
+dbbackup backup cluster
 
-#### Progress Feature Examples
-
-```bash
-# Backup with file-by-file progress
-dbbackup backup single large_db --progress --show-files
-
-# Backup with byte-level transfer tracking
-dbbackup backup cluster --progress --show-bytes --compression 9
-
-# Restore with step-by-step progress
-dbbackup restore backup.dump --progress --verify --show-steps
+# All operations show:
+# - Step-by-step progress indicators
+# - Database sizes and completion status
+# - Elapsed time and final summary
+# - Success/failure counts
 ```
 
 ### Command Line Interface
@@ -279,17 +269,20 @@ sudo -u postgres dbbackup backup cluster --insecure
 #### System Diagnostics
 
 ```bash
-# Check connection status
+# Check connection status and configuration
 dbbackup status
 
-# Run preflight checks
+# Run preflight checks before backup
 dbbackup preflight
 
-# List databases and archives
+# List available databases and backups
 dbbackup list
 
 # Show CPU optimization settings
 dbbackup cpu
+
+# Enable debug logging for troubleshooting
+dbbackup status --debug
 ```
 
 ## ⚙️ Configuration
