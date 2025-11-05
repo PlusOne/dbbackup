@@ -37,7 +37,18 @@ func NewStatusView(cfg *config.Config, log logger.Logger, parent tea.Model) Stat
 }
 
 func (m StatusViewModel) Init() tea.Cmd {
-	return fetchStatus(m.config, m.logger)
+	return tea.Batch(
+		fetchStatus(m.config, m.logger),
+		tickCmd(),
+	)
+}
+
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
 
 type statusMsg struct {
@@ -98,6 +109,12 @@ func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
 
 func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tickMsg:
+		if m.loading {
+			return m, tickCmd()
+		}
+		return m, nil
+
 	case statusMsg:
 		m.loading = false
 		if msg.status != "" {

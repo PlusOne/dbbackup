@@ -61,7 +61,18 @@ func (m BackupExecutionModel) Init() tea.Cmd {
 		})
 	})
 
-	return executeBackupWithTUIProgress(m.config, m.logger, m.backupType, m.databaseName, m.ratio, reporter)
+	return tea.Batch(
+		executeBackupWithTUIProgress(m.config, m.logger, m.backupType, m.databaseName, m.ratio, reporter),
+		backupTickCmd(),
+	)
+}
+
+type backupTickMsg time.Time
+
+func backupTickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return backupTickMsg(t)
+	})
 }
 
 type backupProgressMsg struct {
@@ -142,6 +153,12 @@ func executeBackupWithTUIProgress(cfg *config.Config, log logger.Logger, backupT
 
 func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case backupTickMsg:
+		if !m.done {
+			return m, backupTickCmd()
+		}
+		return m, nil
+
 	case backupProgressMsg:
 		m.status = msg.status
 		m.progress = msg.progress

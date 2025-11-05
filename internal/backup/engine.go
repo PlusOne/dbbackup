@@ -374,7 +374,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	
 	// Create archive
 	e.printf("   Creating compressed archive...\n")
-	if err := e.createArchive(tempDir, outputFile); err != nil {
+	if err := e.createArchive(ctx, tempDir, outputFile); err != nil {
 		quietProgress.Fail(fmt.Sprintf("Failed to create archive: %v", err))
 		operation.Fail("Archive creation failed")
 		return fmt.Errorf("failed to create archive: %w", err)
@@ -672,7 +672,7 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 }
 
 // createArchive creates a compressed tar archive
-func (e *Engine) createArchive(sourceDir, outputFile string) error {
+func (e *Engine) createArchive(ctx context.Context, sourceDir, outputFile string) error {
 	// Use pigz for faster parallel compression if available, otherwise use standard gzip
 	compressCmd := "tar"
 	compressArgs := []string{"-czf", outputFile, "-C", sourceDir, "."}
@@ -681,28 +681,46 @@ func (e *Engine) createArchive(sourceDir, outputFile string) error {
 	if _, err := exec.LookPath("pigz"); err == nil {
 		// Use pigz with number of cores for parallel compression
 		compressArgs = []string{"-cf", "-", "-C", sourceDir, "."}
-		cmd := exec.Command("tar", compressArgs...)
+		cmd := exec.CommandContext(ctx, "tar", compressArgs...)
 		
-		// Pipe to pigz for parallel compression
-		pigzCmd := exec.Command("pigz", "-p", strconv.Itoa(e.cfg.Jobs), ">", outputFile)
-		
-		tarOut, err := cmd.StdoutPipe()
+		// Create output file
+		outFile, err := os.Create(outputFile)
 		if err != nil {
 			// Fallback to regular tar
 			goto regularTar
 		}
-		pigzCmd.Stdin = tarOut
+		defer outFile.Close()
 		
+		// Pipe to pigz for parallel compression
+		pigzCmd := exec.CommandContext(ctx, "pigz", "-p", strconv.Itoa(e.cfg.Jobs))
+		
+		tarOut, err := cmd.StdoutPipe()
+		if err != nil {
+			outFile.Close()
+			// Fallback to regular tar
+			goto regularTar
+		}
+		pigzCmd.Stdin = tarOut
+		pigzCmd.Stdout = outFile
+		
+		// Start both commands
 		if err := pigzCmd.Start(); err != nil {
+			outFile.Close()
 			goto regularTar
 		}
 		if err := cmd.Start(); err != nil {
+			pigzCmd.Process.Kill()
+			outFile.Close()
 			goto regularTar
 		}
 		
+		// Wait for tar to finish
 		if err := cmd.Wait(); err != nil {
+			pigzCmd.Process.Kill()
 			return fmt.Errorf("tar failed: %w", err)
 		}
+		
+		// Wait for pigz to finish
 		if err := pigzCmd.Wait(); err != nil {
 			return fmt.Errorf("pigz compression failed: %w", err)
 		}
@@ -711,7 +729,7 @@ func (e *Engine) createArchive(sourceDir, outputFile string) error {
 
 regularTar:
 	// Standard tar with gzip (fallback)
-	cmd := exec.Command(compressCmd, compressArgs...)
+	cmd := exec.CommandContext(ctx, compressCmd, compressArgs...)
 	
 	// Stream stderr to avoid memory issues
 	stderr, err := cmd.StderrPipe()
