@@ -198,10 +198,10 @@ func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		level = "DEBUG"
 	case logrus.InfoLevel:
 		levelColor = "\033[32m" // Green
-		level = "INFO"
+		level = "INFO "
 	case logrus.WarnLevel:
 		levelColor = "\033[33m" // Yellow
-		level = "WARN"
+		level = "WARN "
 	case logrus.ErrorLevel:
 		levelColor = "\033[31m" // Red
 		level = "ERROR"
@@ -210,9 +210,9 @@ func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	}
 	resetColor := "\033[0m"
 	
-	// Build the message
+	// Build the message with fixed-width level (5 chars)
 	var output strings.Builder
-	output.WriteString(fmt.Sprintf("%s[%s]%s ", levelColor, level, resetColor))
+	output.WriteString(fmt.Sprintf("%s%-5s%s ", levelColor, level, resetColor))
 	output.WriteString(fmt.Sprintf("[%s] ", timestamp))
 	output.WriteString(entry.Message)
 	
