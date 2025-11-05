@@ -188,39 +188,50 @@ type CleanFormatter struct{}
 // Format implements logrus.Formatter interface
 func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	timestamp := entry.Time.Format("2006-01-02T15:04:05")
-	level := strings.ToUpper(entry.Level.String())
 	
 	// Color codes for different log levels
-	var levelColor string
+	var levelColor, levelText string
 	switch entry.Level {
 	case logrus.DebugLevel:
 		levelColor = "\033[36m" // Cyan
-		level = "DEBUG"
+		levelText = "DEBUG"
 	case logrus.InfoLevel:
 		levelColor = "\033[32m" // Green
-		level = "INFO "
+		levelText = "INFO "
 	case logrus.WarnLevel:
 		levelColor = "\033[33m" // Yellow
-		level = "WARN "
+		levelText = "WARN "
 	case logrus.ErrorLevel:
 		levelColor = "\033[31m" // Red
-		level = "ERROR"
+		levelText = "ERROR"
 	default:
 		levelColor = "\033[0m" // Reset
+		levelText = "INFO "
 	}
 	resetColor := "\033[0m"
 	
-	// Build the message with fixed-width level (5 chars)
+	// Build the message with perfectly aligned columns
 	var output strings.Builder
-	output.WriteString(fmt.Sprintf("%s%-5s%s ", levelColor, level, resetColor))
-	output.WriteString(fmt.Sprintf("[%s] ", timestamp))
+	
+	// Column 1: Level (with color, fixed width 5 chars)
+	output.WriteString(levelColor)
+	output.WriteString(levelText)
+	output.WriteString(resetColor)
+	output.WriteString(" ")
+	
+	// Column 2: Timestamp (fixed format)
+	output.WriteString("[")
+	output.WriteString(timestamp)
+	output.WriteString("] ")
+	
+	// Column 3: Message
 	output.WriteString(entry.Message)
 	
 	// Append important fields in a clean format (skip internal fields)
 	if len(entry.Data) > 0 {
 		for k, v := range entry.Data {
 			// Skip noisy internal fields
-			if k == "elapsed" || k == "operation_id" || k == "step" {
+			if k == "elapsed" || k == "operation_id" || k == "step" || k == "timestamp" {
 				continue
 			}
 			
