@@ -440,11 +440,32 @@ func (p *PostgreSQL) buildDSN() string {
 	return dsn
 }
 
-// buildPgxDSN builds a connection string for pgx (supports URL format)
+// buildPgxDSN builds a connection string for pgx
 func (p *PostgreSQL) buildPgxDSN() string {
 	// pgx supports both URL and keyword=value formats
-	// Use URL format for better compatibility and features
+	// Use keyword format for Unix sockets, URL for TCP
 	
+	// Try Unix socket first for localhost without password
+	if p.cfg.Host == "localhost" && p.cfg.Password == "" {
+		socketDirs := []string{
+			"/var/run/postgresql",
+			"/tmp",
+			"/var/lib/pgsql",
+		}
+		
+		for _, dir := range socketDirs {
+			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, p.cfg.Port)
+			if _, err := os.Stat(socketPath); err == nil {
+				// Use keyword=value format for Unix sockets
+				dsn := fmt.Sprintf("user=%s dbname=%s host=%s sslmode=disable",
+					p.cfg.User, p.cfg.Database, dir)
+				p.log.Debug("Using PostgreSQL socket", "path", socketPath)
+				return dsn
+			}
+		}
+	}
+	
+	// Use URL format for TCP connections
 	var dsn strings.Builder
 	dsn.WriteString("postgres://")
 	
@@ -460,37 +481,9 @@ func (p *PostgreSQL) buildPgxDSN() string {
 	dsn.WriteString("@")
 	
 	// Host and Port
-	if p.cfg.Host == "localhost" && p.cfg.Password == "" {
-		// Try Unix socket for peer authentication
-		socketDirs := []string{
-			"/var/run/postgresql",
-			"/tmp",
-			"/var/lib/pgsql",
-		}
-		
-		socketFound := false
-		for _, dir := range socketDirs {
-			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, p.cfg.Port)
-			if _, err := os.Stat(socketPath); err == nil {
-				dsn.WriteString(dir)
-				p.log.Debug("Using PostgreSQL socket", "path", socketPath)
-				socketFound = true
-				break
-			}
-		}
-		
-		if !socketFound {
-			// Fallback to TCP localhost
-			dsn.WriteString(p.cfg.Host)
-			dsn.WriteString(":")
-			dsn.WriteString(strconv.Itoa(p.cfg.Port))
-		}
-	} else {
-		// TCP connection
-		dsn.WriteString(p.cfg.Host)
-		dsn.WriteString(":")
-		dsn.WriteString(strconv.Itoa(p.cfg.Port))
-	}
+	dsn.WriteString(p.cfg.Host)
+	dsn.WriteString(":")
+	dsn.WriteString(strconv.Itoa(p.cfg.Port))
 	
 	// Database
 	dsn.WriteString("/")
