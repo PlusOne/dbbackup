@@ -192,42 +192,44 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m BackupExecutionModel) View() string {
 	var s strings.Builder
 
+	// Clear screen with newlines and render header
+	s.WriteString("\n\n")
 	header := titleStyle.Render("🔄 Backup Execution")
-	s.WriteString(fmt.Sprintf("\n%s\n\n", header))
+	s.WriteString(header)
+	s.WriteString("\n\n")
 
-	// Backup details
-	s.WriteString(fmt.Sprintf("%-12s %s\n", "Type:", m.backupType))
+	// Backup details - properly aligned
+	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Type:", m.backupType))
 	if m.databaseName != "" {
-		s.WriteString(fmt.Sprintf("%-12s %s\n", "Database:", m.databaseName))
+		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Database:", m.databaseName))
 	}
 	if m.ratio > 0 {
-		s.WriteString(fmt.Sprintf("%-12s %d\n", "Sample Ratio:", m.ratio))
+		s.WriteString(fmt.Sprintf("  %-10s %d\n", "Sample:", m.ratio))
 	}
-	s.WriteString(fmt.Sprintf("%-12s %s\n", "Duration:", time.Since(m.startTime).Round(time.Second)))
+	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Duration:", time.Since(m.startTime).Round(time.Second)))
 	s.WriteString("\n")
 
 	// Status with spinner
 	if !m.done {
 		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		frame := int(time.Since(m.startTime).Milliseconds()/100) % len(spinner)
-		s.WriteString(fmt.Sprintf("%-12s %s %s\n", "Status:", spinner[frame], m.status))
+		s.WriteString(fmt.Sprintf("  %s %s\n", spinner[frame], m.status))
 	} else {
-		s.WriteString(fmt.Sprintf("%-12s %s\n", "Status:", m.status))
-		s.WriteString("\n")
+		s.WriteString(fmt.Sprintf("  %s\n\n", m.status))
 		
 		if m.err != nil {
-			s.WriteString(fmt.Sprintf("❌ Error: %v\n", m.err))
+			s.WriteString(fmt.Sprintf("  ❌ Error: %v\n", m.err))
 		} else if m.result != "" {
 			// Parse and display result cleanly
 			lines := strings.Split(m.result, "\n")
 			for _, line := range lines {
 				line = strings.TrimSpace(line)
 				if line != "" {
-					s.WriteString(line + "\n")
+					s.WriteString("  " + line + "\n")
 				}
 			}
 		}
-		s.WriteString("\n⌨️  Press Enter or ESC to return to menu\n")
+		s.WriteString("\n  ⌨️  Press Enter or ESC to return to menu\n")
 	}
 
 	return s.String()
