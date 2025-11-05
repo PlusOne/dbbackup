@@ -396,3 +396,17 @@ func NewIndicator(interactive bool, indicatorType string) Indicator {
 		return NewLineByLine() // Default to line-by-line for better compatibility
 	}
 }
+
+// NullIndicator is a no-op indicator that produces no output (for TUI mode)
+type NullIndicator struct{}
+
+// NewNullIndicator creates an indicator that does nothing
+func NewNullIndicator() *NullIndicator {
+	return &NullIndicator{}
+}
+
+func (n *NullIndicator) Start(message string)    {}
+func (n *NullIndicator) Update(message string)   {}
+func (n *NullIndicator) Complete(message string) {}
+func (n *NullIndicator) Fail(message string)     {}
+func (n *NullIndicator) Stop()                   {}

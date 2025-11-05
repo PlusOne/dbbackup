@@ -62,6 +62,11 @@ func NewWithProgress(cfg *config.Config, log logger.Logger, db database.Database
 
 // NewSilent creates a new backup engine in silent mode (for TUI)
 func NewSilent(cfg *config.Config, log logger.Logger, db database.Database, progressIndicator progress.Indicator) *Engine {
+	// If no indicator provided, use null indicator (no output)
+	if progressIndicator == nil {
+		progressIndicator = progress.NewNullIndicator()
+	}
+	
 	detailedReporter := progress.NewDetailedReporter(progressIndicator, &loggerAdapter{logger: log})
 	
 	return &Engine{
@@ -278,9 +283,16 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		}
 	}
 	
-	// Use a quiet progress indicator to avoid duplicate messages
-	quietProgress := progress.NewQuietLineByLine()
-	quietProgress.Start("Starting cluster backup (all databases)")
+	// Use appropriate progress indicator based on silent mode
+	var quietProgress progress.Indicator
+	if e.silent {
+		// In silent mode (TUI), use null indicator - no stdout output at all
+		quietProgress = progress.NewNullIndicator()
+	} else {
+		// In CLI mode, use quiet line-by-line output
+		quietProgress = progress.NewQuietLineByLine()
+		quietProgress.Start("Starting cluster backup (all databases)")
+	}
 	
 	// Ensure backup directory exists
 	if err := os.MkdirAll(e.cfg.BackupDir, 0755); err != nil {
