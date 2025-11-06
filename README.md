@@ -1,5 +1,7 @@
 # dbbackup
 
+![dbbackup](dbbackup.png)
+
 Database backup utility for PostgreSQL and MySQL with support for large databases.
 
 ## Recent Changes
