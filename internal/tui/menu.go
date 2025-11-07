@@ -69,12 +69,15 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 
 	dbTypes := []dbTypeOption{
 		{label: "PostgreSQL", value: "postgres"},
-		{label: "MySQL / MariaDB", value: "mysql"},
+		{label: "MySQL", value: "mysql"},
+		{label: "MariaDB", value: "mariadb"},
 	}
 
 	dbCursor := 0
-	if cfg.IsMySQL() {
+	if cfg.DatabaseType == "mysql" {
 		dbCursor = 1
+	} else if cfg.DatabaseType == "mariadb" {
+		dbCursor = 2
 	}
 
 	model := MenuModel{

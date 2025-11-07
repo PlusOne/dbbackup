@@ -196,9 +196,9 @@ func (c *Config) IsPostgreSQL() bool {
 	return c.DatabaseType == "postgres"
 }
 
-// IsMySQL returns true if database type is MySQL
+// IsMySQL returns true if database type is MySQL or MariaDB
 func (c *Config) IsMySQL() bool {
-	return c.DatabaseType == "mysql"
+	return c.DatabaseType == "mysql" || c.DatabaseType == "mariadb"
 }
 
 // GetDefaultPort returns the default port for the database type
@@ -215,7 +215,9 @@ func (c *Config) DisplayDatabaseType() string {
 	case "postgres":
 		return "PostgreSQL"
 	case "mysql":
-		return "MySQL/MariaDB"
+		return "MySQL"
+	case "mariadb":
+		return "MariaDB"
 	default:
 		return c.DatabaseType
 	}
@@ -225,7 +227,7 @@ func (c *Config) DisplayDatabaseType() string {
 func (c *Config) SetDatabaseType(dbType string) error {
 	normalized, ok := canonicalDatabaseType(dbType)
 	if !ok {
-		return &ConfigError{Field: "database-type", Value: dbType, Message: "must be 'postgres' or 'mysql'"}
+		return &ConfigError{Field: "database-type", Value: dbType, Message: "must be 'postgres', 'mysql', or 'mariadb'"}
 	}
 
 	previous := c.DatabaseType
@@ -329,8 +331,10 @@ func canonicalDatabaseType(input string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(input)) {
 	case "postgres", "postgresql", "pg":
 		return "postgres", true
-	case "mysql", "mariadb", "mariadb-server", "maria":
+	case "mysql":
 		return "mysql", true
+	case "mariadb", "mariadb-server", "maria":
+		return "mariadb", true
 	default:
 		return "", false
 	}
@@ -340,7 +344,7 @@ func defaultPortFor(dbType string) int {
 	switch dbType {
 	case "postgres":
 		return postgresDefaultPort
-	case "mysql":
+	case "mysql", "mariadb":
 		return mysqlDefaultPort
 	default:
 		return postgresDefaultPort
