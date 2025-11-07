@@ -109,6 +109,9 @@ func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archiv
 
 		// Create restore engine with silent progress (no stdout interference with TUI)
 		engine := restore.NewSilent(cfg, log, dbClient)
+		
+		// Set up progress callback (but it won't work in goroutine - progress is already sent via logs)
+		// The TUI will just use spinner animation to show activity
 
 		// Execute restore based on type
 		var restoreErr error
@@ -233,24 +236,17 @@ func (m RestoreExecutionModel) View() string {
 		// Show progress
 		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
 		
-		// Show status with rotating spinner
+		// Show status with rotating spinner (unified indicator for all operations)
 		spinner := m.spinnerFrames[m.spinnerFrame]
 		s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
 		s.WriteString("\n")
 
-		// Progress bar
-		progressBar := renderProgressBar(m.progress)
-		s.WriteString(progressBar)
-		s.WriteString(fmt.Sprintf("  %d%%\n", m.progress))
-		s.WriteString("\n")
-
-		// Details
-		if len(m.details) > 0 {
-			s.WriteString(infoStyle.Render("Recent activity:"))
-			s.WriteString("\n")
-			for _, detail := range m.details {
-				s.WriteString(fmt.Sprintf("  • %s\n", detail))
-			}
+		// Only show progress bar for single database restore
+		// Cluster restore uses spinner only (consistent with CLI behavior)
+		if m.restoreType == "restore-single" {
+			progressBar := renderProgressBar(m.progress)
+			s.WriteString(progressBar)
+			s.WriteString(fmt.Sprintf("  %d%%\n", m.progress))
 			s.WriteString("\n")
 		}
 
