@@ -339,6 +339,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	successCount := 0
 	failCount := 0
+	var failedDBs []string
 
 	for i, entry := range entries {
 		if entry.IsDir() {
@@ -354,11 +355,13 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		// Create database first if it doesn't exist
 		if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
 			e.log.Warn("Could not ensure database exists", "name", dbName, "error", err)
-			// Continue anyway - pg_restore can create it
+			// Continue anyway - pg_restore might handle it
 		}
 
-		if err := e.restorePostgreSQLDump(ctx, dumpFile, dbName, false, false); err != nil {
+		// Restore with clean flag to drop existing objects
+		if err := e.restorePostgreSQLDump(ctx, dumpFile, dbName, false, true); err != nil {
 			e.log.Error("Failed to restore database", "name", dbName, "error", err)
+			failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, err))
 			failCount++
 			continue
 		}
@@ -367,9 +370,10 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	}
 
 	if failCount > 0 {
+		failedList := strings.Join(failedDBs, "; ")
 		e.progress.Fail(fmt.Sprintf("Cluster restore completed with errors: %d succeeded, %d failed", successCount, failCount))
 		operation.Complete(fmt.Sprintf("Partial restore: %d succeeded, %d failed", successCount, failCount))
-		return fmt.Errorf("cluster restore completed with %d failures", failCount)
+		return fmt.Errorf("cluster restore completed with %d failures: %s", failCount, failedList)
 	}
 
 	e.progress.Complete(fmt.Sprintf("Cluster restored successfully: %d databases", successCount))
