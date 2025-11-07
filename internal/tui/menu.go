@@ -82,6 +82,11 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 			"Single Database Backup",
 			"Sample Database Backup (with ratio)",
 			"Cluster Backup (all databases)",
+			"────────────────────────────────",
+			"Restore Single Database",
+			"Restore Cluster Backup",
+			"List & Manage Backups",
+			"────────────────────────────────",
 			"View Active Operations",
 			"Show Operation History",
 			"Database Status & Health Check",
@@ -153,17 +158,27 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleSampleBackup()
 			case 2: // Cluster Backup
 				return m.handleClusterBackup()
-			case 3: // View Active Operations
+			case 3: // Separator
+				// Do nothing
+			case 4: // Restore Single Database
+				return m.handleRestoreSingle()
+			case 5: // Restore Cluster Backup
+				return m.handleRestoreCluster()
+			case 6: // List & Manage Backups
+				return m.handleBackupManager()
+			case 7: // Separator
+				// Do nothing
+			case 8: // View Active Operations
 				return m.handleViewOperations()
-			case 4: // Show Operation History
+			case 9: // Show Operation History
 				return m.handleOperationHistory()
-			case 5: // Database Status
+			case 10: // Database Status
 				return m.handleStatus()
-			case 6: // Settings
+			case 11: // Settings
 				return m.handleSettings()
-			case 7: // Clear History
+			case 12: // Clear History
 				m.message = "🗑️ History cleared"
-			case 8: // Quit
+			case 13: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -279,6 +294,28 @@ func (m MenuModel) handleSettings() (tea.Model, tea.Cmd) {
 	// Create and return the settings model
 	settingsModel := NewSettingsModel(m.config, m.logger, m)
 	return settingsModel, nil
+}
+
+// handleRestoreSingle opens archive browser for single restore
+func (m MenuModel) handleRestoreSingle() (tea.Model, tea.Cmd) {
+	browser := NewArchiveBrowser(m.config, m.logger, m, "restore-single")
+	return browser, browser.Init()
+}
+
+// handleRestoreCluster opens archive browser for cluster restore
+func (m MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
+	if !m.config.IsPostgreSQL() {
+		m.message = errorStyle.Render("❌ Cluster restore is available only for PostgreSQL")
+		return m, nil
+	}
+	browser := NewArchiveBrowser(m.config, m.logger, m, "restore-cluster")
+	return browser, browser.Init()
+}
+
+// handleBackupManager opens backup management view
+func (m MenuModel) handleBackupManager() (tea.Model, tea.Cmd) {
+	manager := NewBackupManager(m.config, m.logger, m)
+	return manager, manager.Init()
 }
 
 func (m *MenuModel) applyDatabaseSelection() {

@@ -18,19 +18,6 @@ import (
 
 // Create placeholder commands for the other subcommands
 
-var restoreCmd = &cobra.Command{
-	Use:   "restore [archive]",
-	Short: "Restore from backup archive",
-	Long:  `Restore database from backup archive. Auto-detects archive format.`,
-	Args:  cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return fmt.Errorf("backup archive filename required")
-		}
-		return runRestore(cmd.Context(), args[0])
-	},
-}
-
 var verifyCmd = &cobra.Command{
 	Use:   "verify [archive]",
 	Short: "Verify backup archive integrity",
