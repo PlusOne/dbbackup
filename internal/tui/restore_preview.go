@@ -146,20 +146,27 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		}
 		checks = append(checks, check)
 
-		// 4. Target database check
-		check = SafetyCheck{Name: "Target database", Status: "checking", Critical: false}
-		exists, err := safety.CheckDatabaseExists(ctx, targetDB)
-		if err != nil {
-			check.Status = "warning"
-			check.Message = fmt.Sprintf("Cannot check: %v", err)
-		} else if exists {
-			check.Status = "warning"
-			check.Message = fmt.Sprintf("Database '%s' exists - will be overwritten if clean-first enabled", targetDB)
+		// 4. Target database check (skip for cluster restores)
+		if !archive.Format.IsClusterBackup() {
+			check = SafetyCheck{Name: "Target database", Status: "checking", Critical: false}
+			exists, err := safety.CheckDatabaseExists(ctx, targetDB)
+			if err != nil {
+				check.Status = "warning"
+				check.Message = fmt.Sprintf("Cannot check: %v", err)
+			} else if exists {
+				check.Status = "warning"
+				check.Message = fmt.Sprintf("Database '%s' exists - will be overwritten if clean-first enabled", targetDB)
+			} else {
+				check.Status = "passed"
+				check.Message = fmt.Sprintf("Database '%s' does not exist - will be created", targetDB)
+			}
+			checks = append(checks, check)
 		} else {
-			check.Status = "passed"
-			check.Message = fmt.Sprintf("Database '%s' does not exist - will be created", targetDB)
+			// For cluster restores, just show a general message
+			check = SafetyCheck{Name: "Cluster restore", Status: "passed", Critical: false}
+			check.Message = "Will restore all databases from cluster backup"
+			checks = append(checks, check)
 		}
-		checks = append(checks, check)
 
 		return safetyCheckCompleteMsg{checks: checks, canProceed: canProceed}
 	}
