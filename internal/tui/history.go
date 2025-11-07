@@ -14,11 +14,12 @@ import (
 
 // HistoryViewModel shows operation history
 type HistoryViewModel struct {
-	config  *config.Config
-	logger  logger.Logger
-	parent  tea.Model
-	history []HistoryEntry
-	cursor  int
+	config     *config.Config
+	logger     logger.Logger
+	parent     tea.Model
+	history    []HistoryEntry
+	cursor     int
+	viewOffset int // For scrolling large lists
 }
 
 type HistoryEntry struct {
@@ -31,11 +32,12 @@ type HistoryEntry struct {
 
 func NewHistoryView(cfg *config.Config, log logger.Logger, parent tea.Model) HistoryViewModel {
 	return HistoryViewModel{
-		config:  cfg,
-		logger:  log,
-		parent:  parent,
-		history: loadHistory(cfg),
-		cursor:  0, // Start at first item
+		config:     cfg,
+		logger:     log,
+		parent:     parent,
+		history:    loadHistory(cfg),
+		cursor:     0,
+		viewOffset: 0, // Start at top
 	}
 }
 
@@ -104,11 +106,20 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				// Scroll viewport up if cursor moves above visible area
+				if m.cursor < m.viewOffset {
+					m.viewOffset = m.cursor
+				}
 			}
 
 		case "down", "j":
 			if m.cursor < len(m.history)-1 {
 				m.cursor++
+				// Scroll viewport down if cursor moves below visible area
+				maxVisible := 15 // Show max 15 items at once
+				if m.cursor >= m.viewOffset+maxVisible {
+					m.viewOffset = m.cursor - maxVisible + 1
+				}
 			}
 		}
 	}
@@ -126,10 +137,26 @@ func (m HistoryViewModel) View() string {
 		s.WriteString(infoStyle.Render("📭 No backup history found"))
 		s.WriteString("\n\n")
 	} else {
+		maxVisible := 15 // Show max 15 items at once
+		
+		// Calculate visible range
+		start := m.viewOffset
+		end := start + maxVisible
+		if end > len(m.history) {
+			end = len(m.history)
+		}
+		
 		s.WriteString(fmt.Sprintf("Found %d backup operations (Viewing %d/%d):\n\n", 
 			len(m.history), m.cursor+1, len(m.history)))
 
-		for i, entry := range m.history {
+		// Show scroll indicators
+		if start > 0 {
+			s.WriteString(infoStyle.Render("  ▲ More entries above...\n"))
+		}
+
+		// Display only visible entries
+		for i := start; i < end; i++ {
+			entry := m.history[i]
 			line := fmt.Sprintf("[%s] %s - %s (%s)",
 				entry.Timestamp.Format("2006-01-02 15:04"),
 				entry.Type,
@@ -144,6 +171,12 @@ func (m HistoryViewModel) View() string {
 			}
 			s.WriteString("\n")
 		}
+		
+		// Show scroll indicator if more entries below
+		if end < len(m.history) {
+			s.WriteString(infoStyle.Render(fmt.Sprintf("  ▼ %d more entries below...\n", len(m.history)-end)))
+		}
+		
 		s.WriteString("\n")
 	}
 
