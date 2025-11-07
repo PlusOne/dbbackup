@@ -351,6 +351,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		e.progress.Update(fmt.Sprintf("[%d/%d] Restoring database: %s", i+1, len(entries), dbName))
 		e.log.Info("Restoring database", "name", dbName, "file", dumpFile)
 
+		// Create database first if it doesn't exist
+		if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
+			e.log.Warn("Could not ensure database exists", "name", dbName, "error", err)
+			// Continue anyway - pg_restore can create it
+		}
+
 		if err := e.restorePostgreSQLDump(ctx, dumpFile, dbName, false, false); err != nil {
 			e.log.Error("Failed to restore database", "name", dbName, "error", err)
 			failCount++
@@ -399,6 +405,50 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 		return fmt.Errorf("failed to restore globals: %w\nOutput: %s", err, string(output))
 	}
 
+	return nil
+}
+
+// ensureDatabaseExists checks if a database exists and creates it if not
+func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error {
+	// Check if database exists using psql
+	checkCmd := exec.CommandContext(ctx, "psql",
+		"-h", e.cfg.Host,
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", "postgres", // Connect to default postgres database
+		"-tAc",
+		fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", dbName),
+	)
+	checkCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+	output, err := checkCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to check database existence: %w", err)
+	}
+
+	// If database exists, we're done
+	if strings.TrimSpace(string(output)) == "1" {
+		e.log.Info(fmt.Sprintf("Database '%s' already exists", dbName))
+		return nil
+	}
+
+	// Database doesn't exist, create it
+	e.log.Info(fmt.Sprintf("Creating database '%s'", dbName))
+	createCmd := exec.CommandContext(ctx, "psql",
+		"-h", e.cfg.Host,
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", "postgres",
+		"-c", fmt.Sprintf("CREATE DATABASE \"%s\"", dbName),
+	)
+	createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+	output, err = createCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create database '%s': %w\nOutput: %s", dbName, err, string(output))
+	}
+
+	e.log.Info(fmt.Sprintf("Successfully created database '%s'", dbName))
 	return nil
 }
 
