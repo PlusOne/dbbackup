@@ -600,7 +600,11 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	defer outFile.Close()
 	
 	// Set up pipeline: mysqldump | gzip > outputfile
-	gzipCmd.Stdin, _ = dumpCmd.StdoutPipe()
+	stdin, err := dumpCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create pipe: %w", err)
+	}
+	gzipCmd.Stdin = stdin
 	gzipCmd.Stdout = outFile
 	
 	// Start both commands
@@ -943,29 +947,39 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	compressCmd.Stdout = outFile
 	
 	// Capture stderr from both commands
-	dumpStderr, _ := dumpCmd.StderrPipe()
-	compressStderr, _ := compressCmd.StderrPipe()
+	dumpStderr, err := dumpCmd.StderrPipe()
+	if err != nil {
+		e.log.Warn("Failed to capture dump stderr", "error", err)
+	}
+	compressStderr, err := compressCmd.StderrPipe()
+	if err != nil {
+		e.log.Warn("Failed to capture compress stderr", "error", err)
+	}
 	
 	// Stream stderr output
-	go func() {
-		scanner := bufio.NewScanner(dumpStderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line != "" {
-				e.log.Debug("pg_dump", "output", line)
+	if dumpStderr != nil {
+		go func() {
+			scanner := bufio.NewScanner(dumpStderr)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line != "" {
+					e.log.Debug("pg_dump", "output", line)
+				}
 			}
-		}
-	}()
+		}()
+	}
 	
-	go func() {
-		scanner := bufio.NewScanner(compressStderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line != "" {
-				e.log.Debug("compression", "output", line)
+	if compressStderr != nil {
+		go func() {
+			scanner := bufio.NewScanner(compressStderr)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line != "" {
+					e.log.Debug("compression", "output", line)
+				}
 			}
-		}
-	}()
+		}()
+	}
 	
 	// Start compression first
 	if err := compressCmd.Start(); err != nil {

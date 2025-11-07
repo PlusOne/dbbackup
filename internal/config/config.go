@@ -70,7 +70,11 @@ func New() *Config {
 
 	// Initialize CPU detector
 	cpuDetector := cpu.NewDetector()
-	cpuInfo, _ := cpuDetector.DetectCPU()
+	cpuInfo, err := cpuDetector.DetectCPU()
+	if err != nil {
+		// Log warning but continue with default values
+		// The detector will use fallback defaults
+	}
 
 	dbTypeRaw := getEnvString("DB_TYPE", "postgres")
 	canonicalType, ok := canonicalDatabaseType(dbTypeRaw)
