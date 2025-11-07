@@ -410,30 +410,44 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 
 // ensureDatabaseExists checks if a database exists and creates it if not
 func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error {
-	// Check if database exists using psql
-	checkCmd := exec.CommandContext(ctx, "psql",
-		"-h", e.cfg.Host,
-		"-p", fmt.Sprintf("%d", e.cfg.Port),
-		"-U", e.cfg.User,
-		"-d", "postgres", // Connect to default postgres database
-		"-tAc",
-		fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", dbName),
-	)
-	checkCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	// Build psql command with authentication
+	buildPsqlCmd := func(ctx context.Context, database, query string) *exec.Cmd {
+		args := []string{
+			"-h", e.cfg.Host,
+			"-p", fmt.Sprintf("%d", e.cfg.Port),
+			"-U", e.cfg.User,
+			"-d", database,
+			"-tAc", query,
+		}
+		
+		cmd := exec.CommandContext(ctx, "psql", args...)
+		
+		// Set PGPASSWORD only if password is provided
+		if e.cfg.Password != "" {
+			cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+		}
+		
+		return cmd
+	}
 
+	// Check if database exists
+	checkCmd := buildPsqlCmd(ctx, "postgres", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", dbName))
+	
 	output, err := checkCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to check database existence: %w", err)
+		e.log.Warn("Database existence check failed", "name", dbName, "error", err, "output", string(output))
+		// Continue anyway - maybe we can create it
 	}
 
 	// If database exists, we're done
 	if strings.TrimSpace(string(output)) == "1" {
-		e.log.Info(fmt.Sprintf("Database '%s' already exists", dbName))
+		e.log.Info("Database already exists", "name", dbName)
 		return nil
 	}
 
 	// Database doesn't exist, create it
-	e.log.Info(fmt.Sprintf("Creating database '%s'", dbName))
+	e.log.Info("Creating database", "name", dbName)
+	
 	createCmd := exec.CommandContext(ctx, "psql",
 		"-h", e.cfg.Host,
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
@@ -441,14 +455,20 @@ func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error 
 		"-d", "postgres",
 		"-c", fmt.Sprintf("CREATE DATABASE \"%s\"", dbName),
 	)
-	createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	
+	// Set PGPASSWORD only if password is provided
+	if e.cfg.Password != "" {
+		createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	}
 
 	output, err = createCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to create database '%s': %w\nOutput: %s", dbName, err, string(output))
+		// Log the error but don't fail - pg_restore might handle it
+		e.log.Warn("Database creation failed", "name", dbName, "error", err, "output", string(output))
+		return fmt.Errorf("failed to create database '%s': %w", dbName, err)
 	}
 
-	e.log.Info(fmt.Sprintf("Successfully created database '%s'", dbName))
+	e.log.Info("Successfully created database", "name", dbName)
 	return nil
 }
 

@@ -176,14 +176,11 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c":
-			if !m.done {
-				m.status = "Cancelling..."
-				// In real implementation, would cancel context
-			}
-			return m, nil
+		case "ctrl+c", "q":
+			// Always allow quitting
+			return m.parent, tea.Quit
 
-		case "enter", " ", "q", "esc":
+		case "enter", " ", "esc":
 			if m.done {
 				return m.parent, nil
 			}
