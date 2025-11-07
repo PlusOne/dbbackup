@@ -35,6 +35,7 @@ func NewHistoryView(cfg *config.Config, log logger.Logger, parent tea.Model) His
 		logger:  log,
 		parent:  parent,
 		history: loadHistory(cfg),
+		cursor:  0, // Start at first item
 	}
 }
 
@@ -125,19 +126,19 @@ func (m HistoryViewModel) View() string {
 		s.WriteString(infoStyle.Render("📭 No backup history found"))
 		s.WriteString("\n\n")
 	} else {
-		s.WriteString(fmt.Sprintf("Found %d backup operations:\n\n", len(m.history)))
+		s.WriteString(fmt.Sprintf("Found %d backup operations (Viewing %d/%d):\n\n", 
+			len(m.history), m.cursor+1, len(m.history)))
 
 		for i, entry := range m.history {
-			cursor := " "
-			line := fmt.Sprintf("%s [%s] %s - %s (%s)",
-				cursor,
+			line := fmt.Sprintf("[%s] %s - %s (%s)",
 				entry.Timestamp.Format("2006-01-02 15:04"),
 				entry.Type,
 				entry.Database,
 				entry.Status)
 
 			if m.cursor == i {
-				s.WriteString(selectedStyle.Render("> " + line))
+				// Highlighted selection
+				s.WriteString(selectedStyle.Render("→ " + line))
 			} else {
 				s.WriteString("  " + line)
 			}
