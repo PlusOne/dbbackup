@@ -16,30 +16,30 @@ import (
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Background(lipgloss.Color("#7D56F4")).
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("240")).
 			Padding(0, 1)
 
 	menuStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262"))
+			Foreground(lipgloss.Color("250"))
 
 	menuSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF75B7")).
+				Foreground(lipgloss.Color("15")).
 				Bold(true)
 
 	infoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262"))
+			Foreground(lipgloss.Color("244"))
 
 	successStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#04B575")).
+			Foreground(lipgloss.Color("2")).
 			Bold(true)
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF6B6B")).
+			Foreground(lipgloss.Color("1")).
 			Bold(true)
 
 	dbSelectorLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#57C7FF")).
+				Foreground(lipgloss.Color("6")).
 				Bold(true)
 )
 

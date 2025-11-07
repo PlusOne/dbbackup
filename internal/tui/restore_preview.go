@@ -17,20 +17,20 @@ import (
 var (
 	previewBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")).
+			BorderForeground(lipgloss.Color("240")).
 			Padding(1, 2)
 
 	checkPassedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#04B575"))
+				Foreground(lipgloss.Color("2"))
 
 	checkFailedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF6B6B"))
+				Foreground(lipgloss.Color("1"))
 
 	checkWarningStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FFA500"))
+				Foreground(lipgloss.Color("3"))
 
 	checkPendingStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#626262"))
+				Foreground(lipgloss.Color("244"))
 )
 
 // SafetyCheck represents a pre-restore safety check

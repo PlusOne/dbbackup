@@ -19,23 +19,23 @@ import (
 var (
 	archiveHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("#7D56F4"))
+				Foreground(lipgloss.Color("240"))
 
 	archiveSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF75B7")).
+				Foreground(lipgloss.Color("15")).
 				Bold(true)
 
 	archiveNormalStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#626262"))
+				Foreground(lipgloss.Color("250"))
 
 	archiveValidStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#04B575"))
+				Foreground(lipgloss.Color("2"))
 
 	archiveInvalidStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF6B6B"))
+				Foreground(lipgloss.Color("1"))
 
 	archiveOldStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFA500"))
+			Foreground(lipgloss.Color("3"))
 )
 
 // ArchiveInfo holds information about a backup archive

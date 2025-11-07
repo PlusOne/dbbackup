@@ -40,22 +40,22 @@ func DefaultDirectoryPickerStyles() DirectoryPickerStyles {
 	return DirectoryPickerStyles{
 		Container: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
+			BorderForeground(lipgloss.Color("240")).
 			Padding(1, 2),
 		Header: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
+			Foreground(lipgloss.Color("15")).
 			Bold(true).
 			MarginBottom(1),
 		Item: lipgloss.NewStyle().
 			PaddingLeft(2),
 		Selected: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("170")).
-			Background(lipgloss.Color("62")).
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("240")).
 			Bold(true).
 			PaddingLeft(1).
 			PaddingRight(1),
 		Help: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(lipgloss.Color("244")).
 			MarginTop(1),
 	}
 }

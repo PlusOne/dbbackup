@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99")).Padding(1, 2)
-	inputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	buttonStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("57")).Padding(0, 2)
-	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Background(lipgloss.Color("57")).Bold(true)
-	detailStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250")).Padding(1, 2)
+	inputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	buttonStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("240")).Padding(0, 2)
+	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("240")).Bold(true)
+	detailStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Italic(true)
 )
 
 // SettingsModel represents the settings configuration state
