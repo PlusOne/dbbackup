@@ -215,11 +215,10 @@ func (m HistoryViewModel) View() string {
 
 			if m.cursor == i {
 				// Highlighted selection
-				s.WriteString(selectedStyle.Render("→ " + line))
+				s.WriteString(selectedStyle.Render("→ " + line) + "\n")
 			} else {
-				s.WriteString("  " + line)
+				s.WriteString("  " + line + "\n")
 			}
-			s.WriteString("\n")
 		}
 		
 		// Show scroll indicator if more entries below
