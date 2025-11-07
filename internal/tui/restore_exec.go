@@ -31,6 +31,8 @@ type RestoreExecutionModel struct {
 	progress     int
 	details      []string
 	startTime    time.Time
+	spinnerFrame int
+	spinnerFrames []string
 	
 	// Results
 	done         bool
@@ -54,6 +56,8 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 		phase:        "Starting",
 		startTime:    time.Now(),
 		details:      []string{},
+		spinnerFrames: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		spinnerFrame: 0,
 	}
 }
 
@@ -139,7 +143,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case restoreTickMsg:
 		if !m.done {
-			m.progress = (m.progress + 2) % 100
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(m.spinnerFrames)
 			m.elapsed = time.Since(m.startTime)
 			return m, restoreTickCmd()
 		}
@@ -228,7 +232,10 @@ func (m RestoreExecutionModel) View() string {
 	} else {
 		// Show progress
 		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
-		s.WriteString(fmt.Sprintf("Status: %s\n", m.status))
+		
+		// Show status with rotating spinner
+		spinner := m.spinnerFrames[m.spinnerFrame]
+		s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
 		s.WriteString("\n")
 
 		// Progress bar

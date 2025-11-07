@@ -23,6 +23,7 @@ type Engine struct {
 	progress         progress.Indicator
 	detailedReporter *progress.DetailedReporter
 	dryRun           bool
+	progressCallback func(phase, status string, percent int) // Callback for TUI progress
 }
 
 // New creates a new restore engine
@@ -52,6 +53,19 @@ func NewSilent(cfg *config.Config, log logger.Logger, db database.Database) *Eng
 		progress:         progressIndicator,
 		detailedReporter: detailedReporter,
 		dryRun:           false,
+		progressCallback: nil,
+	}
+}
+
+// SetProgressCallback sets a callback function for progress updates (used by TUI)
+func (e *Engine) SetProgressCallback(callback func(phase, status string, percent int)) {
+	e.progressCallback = callback
+}
+
+// reportProgress calls the progress callback if set
+func (e *Engine) reportProgress(phase, status string, percent int) {
+	if e.progressCallback != nil {
+		e.progressCallback(phase, status, percent)
 	}
 }
 
@@ -312,6 +326,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	}
 
 	e.progress.Start(fmt.Sprintf("Restoring cluster from %s", filepath.Base(archivePath)))
+	e.reportProgress("Extracting", "Extracting cluster archive...", 5)
 
 	// Create temporary extraction directory
 	tempDir := filepath.Join(e.cfg.BackupDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
@@ -333,6 +348,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	if _, err := os.Stat(globalsFile); err == nil {
 		e.log.Info("Restoring global objects")
 		e.progress.Update("Restoring global objects (roles, tablespaces)...")
+		e.reportProgress("Globals", "Restoring global objects...", 15)
 		if err := e.restoreGlobals(ctx, globalsFile); err != nil {
 			e.log.Warn("Failed to restore global objects", "error", err)
 			// Continue anyway - global objects might already exist
@@ -355,6 +371,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	successCount := 0
 	failCount := 0
 	var failedDBs []string
+	totalDBs := 0
+	
+	// Count total databases
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			totalDBs++
+		}
+	}
 
 	for i, entry := range entries {
 		if entry.IsDir() {
@@ -364,7 +388,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
 		dbName := strings.TrimSuffix(entry.Name(), ".dump")
 
-		e.progress.Update(fmt.Sprintf("[%d/%d] Restoring database: %s", i+1, len(entries), dbName))
+		// Calculate progress: 15% for extraction/globals, 85% for databases
+		dbProgress := 15 + int(float64(i)/float64(totalDBs)*85.0)
+		
+		statusMsg := fmt.Sprintf("⠋ [%d/%d] Restoring: %s", i+1, totalDBs, dbName)
+		e.progress.Update(statusMsg)
+		e.reportProgress("Restoring", statusMsg, dbProgress)
 		e.log.Info("Restoring database", "name", dbName, "file", dumpFile)
 
 		// Create database first if it doesn't exist
