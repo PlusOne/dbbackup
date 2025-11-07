@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/auth"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/tui"
 	"github.com/spf13/cobra"
@@ -46,6 +47,14 @@ var interactiveCmd = &cobra.Command{
 	Long:    `Start the interactive menu system for guided backup operations.`,
 	Aliases: []string{"menu", "ui"},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Check authentication before starting TUI
+		if cfg.IsPostgreSQL() {
+			if mismatch, msg := auth.CheckAuthenticationMismatch(cfg); mismatch {
+				fmt.Println(msg)
+				return fmt.Errorf("authentication configuration required")
+			}
+		}
+		
 		// Start the interactive TUI with silent logger to prevent console output conflicts
 		silentLog := logger.NewSilent()
 		return tui.RunInteractiveMenu(cfg, silentLog)
