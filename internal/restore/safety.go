@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -243,13 +242,11 @@ func (s *Safety) CheckDiskSpace(archivePath string, multiplier float64) error {
 	requiredSpace := int64(float64(archiveSize) * multiplier)
 
 	// Get available disk space
-	var statfs syscall.Statfs_t
-	if err := syscall.Statfs(s.cfg.BackupDir, &statfs); err != nil {
+	availableSpace, err := getDiskSpace(s.cfg.BackupDir)
+	if err != nil {
 		s.log.Warn("Cannot check disk space", "error", err)
 		return nil // Don't fail if we can't check
 	}
-
-	availableSpace := int64(statfs.Bavail) * statfs.Bsize
 
 	if availableSpace < requiredSpace {
 		return fmt.Errorf("insufficient disk space: need %s, have %s",
