@@ -353,7 +353,7 @@ func (m SettingsModel) handleEditingInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.saveEditedValue()
 
-	case "backspace":
+	case "backspace", "ctrl+h":
 		if len(m.editingValue) > 0 {
 			m.editingValue = m.editingValue[:len(m.editingValue)-1]
 		}

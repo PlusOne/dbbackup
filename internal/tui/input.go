@@ -71,7 +71,7 @@ func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "backspace":
+		case "backspace", "ctrl+h":
 			if len(m.value) > 0 && m.cursor > 0 {
 				m.value = m.value[:m.cursor-1] + m.value[m.cursor:]
 				m.cursor--
