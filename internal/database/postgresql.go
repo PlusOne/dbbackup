@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/auth"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 	
@@ -35,6 +36,20 @@ func NewPostgreSQL(cfg *config.Config, log logger.Logger) *PostgreSQL {
 
 // Connect establishes a connection to PostgreSQL using pgx for better performance
 func (p *PostgreSQL) Connect(ctx context.Context) error {
+	// Try to load password from .pgpass if not provided
+	if p.cfg.Password == "" {
+		if password, found := auth.LoadPasswordFromPgpass(p.cfg); found {
+			p.cfg.Password = password
+			p.log.Debug("Loaded password from .pgpass file")
+		}
+	}
+	
+	// Check for authentication mismatch before attempting connection
+	if mismatch, msg := auth.CheckAuthenticationMismatch(p.cfg); mismatch {
+		fmt.Println(msg)
+		return fmt.Errorf("authentication configuration required")
+	}
+	
 	// Build PostgreSQL DSN (pgx format)
 	dsn := p.buildPgxDSN()
 	p.dsn = dsn

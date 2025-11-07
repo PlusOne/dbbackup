@@ -387,6 +387,11 @@ func getCurrentUser() string {
 	return "postgres"
 }
 
+// GetCurrentOSUser returns the current OS user (exported for auth checking)
+func GetCurrentOSUser() string {
+	return getCurrentUser()
+}
+
 func getDefaultBackupDir() string {
 	// Try to create a sensible default backup directory
 	homeDir, _ := os.UserHomeDir()
