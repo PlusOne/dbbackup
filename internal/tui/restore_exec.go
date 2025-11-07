@@ -103,8 +103,8 @@ func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archiv
 		}
 		defer dbClient.Close()
 
-		// Create restore engine
-		engine := restore.New(cfg, log, dbClient)
+		// Create restore engine with silent progress (no stdout interference with TUI)
+		engine := restore.NewSilent(cfg, log, dbClient)
 
 		// Execute restore based on type
 		var restoreErr error

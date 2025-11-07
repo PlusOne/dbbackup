@@ -40,6 +40,21 @@ func New(cfg *config.Config, log logger.Logger, db database.Database) *Engine {
 	}
 }
 
+// NewSilent creates a new restore engine with no stdout progress (for TUI mode)
+func NewSilent(cfg *config.Config, log logger.Logger, db database.Database) *Engine {
+	progressIndicator := progress.NewNullIndicator()
+	detailedReporter := progress.NewDetailedReporter(progressIndicator, &loggerAdapter{logger: log})
+
+	return &Engine{
+		cfg:              cfg,
+		log:              log,
+		db:               db,
+		progress:         progressIndicator,
+		detailedReporter: detailedReporter,
+		dryRun:           false,
+	}
+}
+
 // NewWithProgress creates a restore engine with custom progress indicator
 func NewWithProgress(cfg *config.Config, log logger.Logger, db database.Database, progressIndicator progress.Indicator, dryRun bool) *Engine {
 	if progressIndicator == nil {
