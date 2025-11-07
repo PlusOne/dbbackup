@@ -31,13 +31,27 @@ type HistoryEntry struct {
 }
 
 func NewHistoryView(cfg *config.Config, log logger.Logger, parent tea.Model) HistoryViewModel {
+	history := loadHistory(cfg)
+	// Start at the last item (most recent backup at bottom)
+	lastIndex := len(history) - 1
+	if lastIndex < 0 {
+		lastIndex = 0
+	}
+	
+	// Calculate initial viewport to show the last item
+	maxVisible := 15
+	viewOffset := lastIndex - maxVisible + 1
+	if viewOffset < 0 {
+		viewOffset = 0
+	}
+	
 	return HistoryViewModel{
 		config:     cfg,
 		logger:     log,
 		parent:     parent,
-		history:    loadHistory(cfg),
-		cursor:     0,
-		viewOffset: 0, // Start at top
+		history:    history,
+		cursor:     lastIndex, // Start at most recent backup
+		viewOffset: viewOffset,
 	}
 }
 
@@ -97,6 +111,8 @@ func (m HistoryViewModel) Init() tea.Cmd {
 }
 
 func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	maxVisible := 15 // Show max 15 items at once
+	
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -116,10 +132,44 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.history)-1 {
 				m.cursor++
 				// Scroll viewport down if cursor moves below visible area
-				maxVisible := 15 // Show max 15 items at once
 				if m.cursor >= m.viewOffset+maxVisible {
 					m.viewOffset = m.cursor - maxVisible + 1
 				}
+			}
+			
+		case "pgup":
+			// Page up - jump by maxVisible items
+			m.cursor -= maxVisible
+			if m.cursor < 0 {
+				m.cursor = 0
+			}
+			// Adjust viewport
+			if m.cursor < m.viewOffset {
+				m.viewOffset = m.cursor
+			}
+			
+		case "pgdown":
+			// Page down - jump by maxVisible items
+			m.cursor += maxVisible
+			if m.cursor >= len(m.history) {
+				m.cursor = len(m.history) - 1
+			}
+			// Adjust viewport
+			if m.cursor >= m.viewOffset+maxVisible {
+				m.viewOffset = m.cursor - maxVisible + 1
+			}
+			
+		case "home", "g":
+			// Jump to first item
+			m.cursor = 0
+			m.viewOffset = 0
+			
+		case "end", "G":
+			// Jump to last item
+			m.cursor = len(m.history) - 1
+			m.viewOffset = m.cursor - maxVisible + 1
+			if m.viewOffset < 0 {
+				m.viewOffset = 0
 			}
 		}
 	}
@@ -180,7 +230,7 @@ func (m HistoryViewModel) View() string {
 		s.WriteString("\n")
 	}
 
-	s.WriteString("⌨️  ↑/↓: Navigate • ESC: Back • q: Quit\n")
+	s.WriteString("⌨️  ↑/↓: Navigate • PgUp/PgDn: Jump • Home/End: First/Last • ESC: Back • q: Quit\n")
 
 	return s.String()
 }
