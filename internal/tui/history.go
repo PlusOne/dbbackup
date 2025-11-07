@@ -215,9 +215,11 @@ func (m HistoryViewModel) View() string {
 
 			if m.cursor == i {
 				// Highlighted selection
-				s.WriteString(selectedStyle.Render("→ " + line) + "\n")
+				s.WriteString(selectedStyle.Render("→ " + line))
+				s.WriteString("\n")
 			} else {
-				s.WriteString("  " + line + "\n")
+				s.WriteString("  " + line)
+				s.WriteString("\n")
 			}
 		}
 		
