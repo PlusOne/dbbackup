@@ -263,11 +263,12 @@ func (s *SilentOperation) Fail(message string, args ...any)     {}
 // SilentProgressIndicator implements progress.Indicator but doesn't output anything
 type SilentProgressIndicator struct{}
 
-func (s *SilentProgressIndicator) Start(message string)    {}
-func (s *SilentProgressIndicator) Update(message string)   {}
-func (s *SilentProgressIndicator) Complete(message string) {}
-func (s *SilentProgressIndicator) Fail(message string)     {}
-func (s *SilentProgressIndicator) Stop()                   {}
+func (s *SilentProgressIndicator) Start(message string)                       {}
+func (s *SilentProgressIndicator) Update(message string)                      {}
+func (s *SilentProgressIndicator) Complete(message string)                    {}
+func (s *SilentProgressIndicator) Fail(message string)                        {}
+func (s *SilentProgressIndicator) Stop()                                      {}
+func (s *SilentProgressIndicator) SetEstimator(estimator *progress.ETAEstimator) {}
 
 // RunBackupInTUI runs a backup operation with TUI-compatible progress reporting
 func RunBackupInTUI(ctx context.Context, cfg *config.Config, log logger.Logger,

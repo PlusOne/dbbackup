@@ -363,11 +363,18 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 			totalDBs++
 		}
 	}
+	
+	// Create ETA estimator for database restores
+	estimator := progress.NewETAEstimator("Restoring cluster", totalDBs)
+	e.progress.SetEstimator(estimator)
 
 	for i, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
+		
+		// Update estimator progress
+		estimator.UpdateProgress(i)
 
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
 		dbName := strings.TrimSuffix(entry.Name(), ".dump")
@@ -375,7 +382,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		// Calculate progress percentage for logging
 		dbProgress := 15 + int(float64(i)/float64(totalDBs)*85.0)
 		
-		statusMsg := fmt.Sprintf("⠋ [%d/%d] Restoring: %s", i+1, totalDBs, dbName)
+		statusMsg := fmt.Sprintf("Restoring database %s", dbName)
 		e.progress.Update(statusMsg)
 		e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
 

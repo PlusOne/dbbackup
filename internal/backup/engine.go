@@ -333,12 +333,19 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		return fmt.Errorf("failed to list databases: %w", err)
 	}
 	
+	// Create ETA estimator for database backups
+	estimator := progress.NewETAEstimator("Backing up cluster", len(databases))
+	quietProgress.SetEstimator(estimator)
+	
 	// Backup each database
 	e.printf("   Backing up %d databases...\n", len(databases))
 	successCount := 0
 	failCount := 0
 	
 	for i, dbName := range databases {
+		// Update estimator progress
+		estimator.UpdateProgress(i)
+		
 		e.printf("   [%d/%d] Backing up database: %s\n", i+1, len(databases), dbName)
 		quietProgress.Update(fmt.Sprintf("Backing up database %d/%d: %s", i+1, len(databases), dbName))
 		

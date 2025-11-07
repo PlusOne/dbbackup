@@ -15,16 +15,18 @@ type Indicator interface {
 	Complete(message string)
 	Fail(message string)
 	Stop()
+	SetEstimator(estimator *ETAEstimator)
 }
 
 // Spinner creates a spinning progress indicator
 type Spinner struct {
-	writer   io.Writer
-	message  string
-	active   bool
-	frames   []string
-	interval time.Duration
-	stopCh   chan bool
+	writer    io.Writer
+	message   string
+	active    bool
+	frames    []string
+	interval  time.Duration
+	stopCh    chan bool
+	estimator *ETAEstimator
 }
 
 // NewSpinner creates a new spinner progress indicator
@@ -51,7 +53,14 @@ func (s *Spinner) Start(message string) {
 				return
 			default:
 				if s.active {
-					currentFrame := fmt.Sprintf("%s %s", s.frames[i%len(s.frames)], s.message)
+					displayMsg := s.message
+					
+					// Add ETA info if estimator is available
+					if s.estimator != nil {
+						displayMsg = s.estimator.GetFullStatus(s.message)
+					}
+					
+					currentFrame := fmt.Sprintf("%s %s", s.frames[i%len(s.frames)], displayMsg)
 					if s.message != lastMessage {
 						// Print new line for new messages
 						fmt.Fprintf(s.writer, "\n%s", currentFrame)
@@ -66,6 +75,11 @@ func (s *Spinner) Start(message string) {
 			}
 		}
 	}()
+}
+
+// SetEstimator sets an ETA estimator for this spinner
+func (s *Spinner) SetEstimator(estimator *ETAEstimator) {
+	s.estimator = estimator
 }
 
 // Update changes the spinner message
@@ -166,6 +180,11 @@ func (d *Dots) Stop() {
 	}
 }
 
+// SetEstimator is a no-op for dots (doesn't support ETA display)
+func (d *Dots) SetEstimator(estimator *ETAEstimator) {
+	// Dots indicator doesn't support ETA display
+}
+
 // ProgressBar creates a visual progress bar
 type ProgressBar struct {
 	writer   io.Writer
@@ -232,6 +251,11 @@ func (p *ProgressBar) Stop() {
 	p.active = false
 }
 
+// SetEstimator is a no-op for progress bar (has its own progress tracking)
+func (p *ProgressBar) SetEstimator(estimator *ETAEstimator) {
+	// Progress bar has its own progress tracking
+}
+
 // render draws the progress bar
 func (p *ProgressBar) render() {
 	if !p.active {
@@ -283,10 +307,16 @@ func (s *Static) Stop() {
 	// No-op for static indicator
 }
 
+// SetEstimator is a no-op for static indicator
+func (s *Static) SetEstimator(estimator *ETAEstimator) {
+	// Static indicator doesn't support ETA display
+}
+
 // LineByLine creates a line-by-line progress indicator
 type LineByLine struct {
-	writer io.Writer
-	silent bool
+	writer    io.Writer
+	silent    bool
+	estimator *ETAEstimator
 }
 
 // NewLineByLine creates a new line-by-line progress indicator
@@ -321,14 +351,27 @@ func NewQuietLineByLine() *LineByLine {
 
 // Start shows the initial message
 func (l *LineByLine) Start(message string) {
-	fmt.Fprintf(l.writer, "\n🔄 %s\n", message)
+	displayMsg := message
+	if l.estimator != nil {
+		displayMsg = l.estimator.GetFullStatus(message)
+	}
+	fmt.Fprintf(l.writer, "\n🔄 %s\n", displayMsg)
 }
 
 // Update shows an update message
 func (l *LineByLine) Update(message string) {
 	if !l.silent {
-		fmt.Fprintf(l.writer, "   %s\n", message)
+		displayMsg := message
+		if l.estimator != nil {
+			displayMsg = l.estimator.GetFullStatus(message)
+		}
+		fmt.Fprintf(l.writer, "   %s\n", displayMsg)
 	}
+}
+
+// SetEstimator sets an ETA estimator for this indicator
+func (l *LineByLine) SetEstimator(estimator *ETAEstimator) {
+	l.estimator = estimator
 }
 
 // Complete shows completion message
@@ -375,6 +418,11 @@ func (l *Light) Stop() {
 	// No cleanup needed for light indicator
 }
 
+// SetEstimator is a no-op for light indicator
+func (l *Light) SetEstimator(estimator *ETAEstimator) {
+	// Light indicator doesn't support ETA display
+}
+
 // NewIndicator creates an appropriate progress indicator based on environment
 func NewIndicator(interactive bool, indicatorType string) Indicator {
 	if !interactive {
@@ -405,8 +453,9 @@ func NewNullIndicator() *NullIndicator {
 	return &NullIndicator{}
 }
 
-func (n *NullIndicator) Start(message string)    {}
-func (n *NullIndicator) Update(message string)   {}
-func (n *NullIndicator) Complete(message string) {}
-func (n *NullIndicator) Fail(message string)     {}
-func (n *NullIndicator) Stop()                   {}
+func (n *NullIndicator) Start(message string)              {}
+func (n *NullIndicator) Update(message string)             {}
+func (n *NullIndicator) Complete(message string)           {}
+func (n *NullIndicator) Fail(message string)               {}
+func (n *NullIndicator) Stop()                             {}
+func (n *NullIndicator) SetEstimator(estimator *ETAEstimator) {}
