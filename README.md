@@ -4,10 +4,35 @@
 
 Database backup utility for PostgreSQL and MySQL with support for large databases.
 
-## Recent Changes
+## Recent Changes (November 2025)
+
+### 🎯 ETA Estimation for Long Operations
+- Real-time progress tracking with time estimates
+- Shows elapsed time and estimated time remaining
+- Format: "X/Y (Z%) | Elapsed: 25m | ETA: ~40m remaining"
+- Particularly useful for 2+ hour cluster backups
+- Works with both CLI and TUI modes
+
+### 🔐 Authentication Detection & Smart Guidance
+- Detects OS user vs DB user mismatches
+- Identifies PostgreSQL authentication methods (peer/ident/md5)
+- Shows helpful error messages with 4 solutions before connection attempt
+- Auto-loads passwords from `~/.pgpass` file
+- Prevents confusing TLS/authentication errors in TUI mode
+- Works across all Linux distributions
+
+### 🗄️ MariaDB Support
+- MariaDB now selectable as separate database type in interactive mode
+- Press Enter to cycle: PostgreSQL → MySQL → MariaDB
+- Stored as distinct type in configuration
+
+### 🎨 UI Improvements
+- Conservative terminal colors for better compatibility
+- Fixed operation history navigation (arrow keys, viewport scrolling)
+- Clean plain text display without styling artifacts
+- 15-item viewport with scroll indicators
 
 ### Large Database Handling
-
 - Streaming compression reduces memory usage by ~90%
 - Native pgx v5 driver reduces memory by ~48% compared to lib/pq
 - Automatic format selection based on database size
@@ -73,10 +98,19 @@ go build -o dbbackup main.go
 ### Interactive Mode
 
 ```bash
-dbbackup interactive
+# PostgreSQL - must match OS user for peer authentication
+sudo -u postgres dbbackup interactive
+
+# Or specify user explicitly
+sudo -u postgres dbbackup interactive --user postgres
+
+# MySQL/MariaDB
+dbbackup interactive --db-type mysql --user root
 ```
 
 Interactive mode provides menu navigation with arrow keys and automatic status updates.
+
+**Authentication Note:** For PostgreSQL with peer authentication, run as the postgres user to avoid connection errors.
 
 ### Command Line
 
@@ -133,10 +167,43 @@ dbbackup cpu
 
 ### PostgreSQL
 
-Use the `postgres` system user for local connections:
+#### Authentication Methods
+
+PostgreSQL uses different authentication methods depending on your system configuration:
+
+**Peer Authentication (most common on Linux):**
 ```bash
+# Must run as postgres user
 sudo -u postgres dbbackup backup cluster
+
+# If you see this error: "Ident authentication failed for user postgres"
+# Use one of these solutions:
 ```
+
+**Solution 1: Use matching OS user (recommended)**
+```bash
+sudo -u postgres dbbackup status --user postgres
+```
+
+**Solution 2: Configure ~/.pgpass file**
+```bash
+echo "localhost:5432:*:postgres:your_password" > ~/.pgpass
+chmod 0600 ~/.pgpass
+dbbackup status --user postgres
+```
+
+**Solution 3: Set PGPASSWORD environment variable**
+```bash
+export PGPASSWORD=your_password
+dbbackup status --user postgres
+```
+
+**Solution 4: Use --password flag**
+```bash
+dbbackup status --user postgres --password your_password
+```
+
+#### SSL Configuration
 
 SSL modes: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`
 
@@ -222,8 +289,18 @@ Streaming architecture maintains constant memory usage regardless of database si
 
 ### Connection Issues
 
+**Authentication Errors (PostgreSQL):**
+
+If you see: `FATAL: Peer authentication failed for user "postgres"` or `FATAL: Ident authentication failed`
+
+The tool will automatically show you 4 solutions:
+1. Run as matching OS user: `sudo -u postgres dbbackup`
+2. Configure ~/.pgpass file (recommended for automation)
+3. Set PGPASSWORD environment variable
+4. Use --password flag
+
+**Test connection:**
 ```bash
-# Test connection
 dbbackup status
 
 # Disable SSL
@@ -264,6 +341,8 @@ dbbackup backup single mydb --debug
 
 ## Documentation
 
+- [AUTHENTICATION_PLAN.md](AUTHENTICATION_PLAN.md) - Authentication handling across distributions
+- [PROGRESS_IMPLEMENTATION.md](PROGRESS_IMPLEMENTATION.md) - ETA estimation implementation
 - [HUGE_DATABASE_QUICK_START.md](HUGE_DATABASE_QUICK_START.md) - Quick start for large databases
 - [LARGE_DATABASE_OPTIMIZATION_PLAN.md](LARGE_DATABASE_OPTIMIZATION_PLAN.md) - Optimization details
 - [PRIORITY2_PGX_INTEGRATION.md](PRIORITY2_PGX_INTEGRATION.md) - pgx v5 integration
