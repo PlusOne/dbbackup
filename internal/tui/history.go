@@ -214,12 +214,10 @@ func (m HistoryViewModel) View() string {
 				entry.Status)
 
 			if m.cursor == i {
-				// Highlighted selection - render without background extending to full width
-				s.WriteString("→ ")
-				s.WriteString(selectedStyle.Render(line))
-				s.WriteString("\n")
+				// Simple selection marker without styled background
+				s.WriteString(fmt.Sprintf("→ %s\n", line))
 			} else {
-				s.WriteString("  " + line + "\n")
+				s.WriteString(fmt.Sprintf("  %s\n", line))
 			}
 		}
 		
