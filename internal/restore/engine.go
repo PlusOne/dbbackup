@@ -116,6 +116,15 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 	// Start progress tracking
 	e.progress.Start(fmt.Sprintf("Restoring database '%s' from %s", targetDB, filepath.Base(archivePath)))
 
+	// Create database if requested and it doesn't exist
+	if createIfMissing {
+		e.log.Info("Checking if target database exists", "database", targetDB)
+		if err := e.ensureDatabaseExists(ctx, targetDB); err != nil {
+			operation.Fail(fmt.Sprintf("Failed to create database: %v", err))
+			return fmt.Errorf("failed to create database '%s': %w", targetDB, err)
+		}
+	}
+
 	// Handle different archive formats
 	var err error
 	switch format {
