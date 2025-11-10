@@ -162,6 +162,33 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 	return e.executeRestoreCommand(ctx, cmd)
 }
 
+// restorePostgreSQLDumpWithOwnership restores from PostgreSQL custom dump with ownership control
+func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archivePath, targetDB string, compressed bool, preserveOwnership bool) error {
+	// Build restore command with ownership control
+	opts := database.RestoreOptions{
+		Parallel:          1,
+		Clean:             false, // We already dropped the database
+		NoOwner:           !preserveOwnership, // Preserve ownership if we're superuser
+		NoPrivileges:      !preserveOwnership, // Preserve privileges if we're superuser
+		SingleTransaction: true,
+	}
+	
+	e.log.Info("Restoring database", 
+		"database", targetDB, 
+		"preserveOwnership", preserveOwnership,
+		"noOwner", opts.NoOwner,
+		"noPrivileges", opts.NoPrivileges)
+	
+	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, opts)
+
+	if compressed {
+		// For compressed dumps, decompress first
+		return e.executeRestoreWithDecompression(ctx, archivePath, cmd)
+	}
+
+	return e.executeRestoreCommand(ctx, cmd)
+}
+
 // restorePostgreSQLSQL restores from PostgreSQL SQL script
 func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB string, compressed bool) error {
 	// Use psql for SQL scripts
@@ -328,15 +355,42 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		return fmt.Errorf("failed to extract archive: %w", err)
 	}
 
-	// Restore global objects (roles, tablespaces)
+	// Check if user has superuser privileges (required for ownership restoration)
+	e.progress.Update("Checking privileges...")
+	isSuperuser, err := e.checkSuperuser(ctx)
+	if err != nil {
+		e.log.Warn("Could not verify superuser status", "error", err)
+		isSuperuser = false // Assume not superuser if check fails
+	}
+	
+	if !isSuperuser {
+		e.log.Warn("Current user is not a superuser - database ownership may not be fully restored")
+		e.progress.Update("⚠️  Warning: Non-superuser - ownership restoration limited")
+		time.Sleep(2 * time.Second) // Give user time to see warning
+	} else {
+		e.log.Info("Superuser privileges confirmed - full ownership restoration enabled")
+	}
+
+	// Restore global objects FIRST (roles, tablespaces) - CRITICAL for ownership
 	globalsFile := filepath.Join(tempDir, "globals.sql")
 	if _, err := os.Stat(globalsFile); err == nil {
-		e.log.Info("Restoring global objects")
+		e.log.Info("Restoring global objects (roles, tablespaces)")
 		e.progress.Update("Restoring global objects (roles, tablespaces)...")
 		if err := e.restoreGlobals(ctx, globalsFile); err != nil {
-			e.log.Warn("Failed to restore global objects", "error", err)
-			// Continue anyway - global objects might already exist
+			e.log.Error("Failed to restore global objects", "error", err)
+			if isSuperuser {
+				// If we're superuser and can't restore globals, this is a problem
+				e.progress.Fail("Failed to restore global objects")
+				operation.Fail("Global objects restoration failed")
+				return fmt.Errorf("failed to restore global objects: %w", err)
+			} else {
+				e.log.Warn("Continuing without global objects (may cause ownership issues)")
+			}
+		} else {
+			e.log.Info("Successfully restored global objects")
 		}
+	} else {
+		e.log.Warn("No globals.sql file found in backup - roles and tablespaces will not be restored")
 	}
 
 	// Restore individual databases
@@ -382,18 +436,28 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		// Calculate progress percentage for logging
 		dbProgress := 15 + int(float64(i)/float64(totalDBs)*85.0)
 		
-		statusMsg := fmt.Sprintf("Restoring database %s", dbName)
+		statusMsg := fmt.Sprintf("Restoring database %s (%d/%d)", dbName, i+1, totalDBs)
 		e.progress.Update(statusMsg)
 		e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
 
-		// Create database first if it doesn't exist
-		if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
-			e.log.Warn("Could not ensure database exists", "name", dbName, "error", err)
-			// Continue anyway - pg_restore might handle it
+		// STEP 1: Drop existing database completely (clean slate)
+		e.log.Info("Dropping existing database for clean restore", "name", dbName)
+		if err := e.dropDatabaseIfExists(ctx, dbName); err != nil {
+			e.log.Warn("Could not drop existing database", "name", dbName, "error", err)
+			// Continue anyway - database might not exist
 		}
 
-		// Restore with clean flag to drop existing objects
-		if err := e.restorePostgreSQLDump(ctx, dumpFile, dbName, false, true); err != nil {
+		// STEP 2: Create fresh database (pg_restore will handle ownership if we have privileges)
+		if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
+			e.log.Error("Failed to create database", "name", dbName, "error", err)
+			failedDBs = append(failedDBs, fmt.Sprintf("%s: failed to create database: %v", dbName, err))
+			failCount++
+			continue
+		}
+
+		// STEP 3: Restore with ownership preservation if superuser
+		preserveOwnership := isSuperuser
+		if err := e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership); err != nil {
 			e.log.Error("Failed to restore database", "name", dbName, "error", err)
 			failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, err))
 			failCount++
@@ -427,14 +491,19 @@ func (e *Engine) extractArchive(ctx context.Context, archivePath, destDir string
 
 // restoreGlobals restores global objects (roles, tablespaces)
 func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
-	cmd := exec.CommandContext(ctx,
-		"psql",
-		"-h", e.cfg.Host,
+	args := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
 		"-f", globalsFile,
-	)
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "psql", args...)
 
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
@@ -446,24 +515,126 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 	return nil
 }
 
+// checkSuperuser verifies if the current user has superuser privileges
+func (e *Engine) checkSuperuser(ctx context.Context) (bool, error) {
+	args := []string{
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", "postgres",
+		"-tAc", "SELECT usesuper FROM pg_user WHERE usename = current_user",
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	
+	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("failed to check superuser status: %w", err)
+	}
+	
+	isSuperuser := strings.TrimSpace(string(output)) == "t"
+	return isSuperuser, nil
+}
+
+// terminateConnections kills all active connections to a database
+func (e *Engine) terminateConnections(ctx context.Context, dbName string) error {
+	query := fmt.Sprintf(`
+		SELECT pg_terminate_backend(pid)
+		FROM pg_stat_activity
+		WHERE datname = '%s'
+		AND pid <> pg_backend_pid()
+	`, dbName)
+	
+	args := []string{
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", "postgres",
+		"-tAc", query,
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	
+	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		e.log.Warn("Failed to terminate connections", "database", dbName, "error", err, "output", string(output))
+		// Don't fail - database might not exist or have no connections
+	}
+	
+	return nil
+}
+
+// dropDatabaseIfExists drops a database completely (clean slate)
+func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error {
+	// First terminate all connections
+	if err := e.terminateConnections(ctx, dbName); err != nil {
+		e.log.Warn("Could not terminate connections", "database", dbName, "error", err)
+	}
+	
+	// Wait a moment for connections to terminate
+	time.Sleep(500 * time.Millisecond)
+	
+	// Drop the database
+	args := []string{
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", "postgres",
+		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\"", dbName),
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	
+	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to drop database '%s': %w\nOutput: %s", dbName, err, string(output))
+	}
+	
+	e.log.Info("Dropped existing database", "name", dbName)
+	return nil
+}
+
 // ensureDatabaseExists checks if a database exists and creates it if not
 func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error {
 	// Build psql command with authentication
 	buildPsqlCmd := func(ctx context.Context, database, query string) *exec.Cmd {
 		args := []string{
-			"-h", e.cfg.Host,
 			"-p", fmt.Sprintf("%d", e.cfg.Port),
 			"-U", e.cfg.User,
 			"-d", database,
 			"-tAc", query,
 		}
 		
+		// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+			args = append([]string{"-h", e.cfg.Host}, args...)
+		}
+		
 		cmd := exec.CommandContext(ctx, "psql", args...)
 		
-		// Set PGPASSWORD only if password is provided
-		if e.cfg.Password != "" {
-			cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
-		}
+		// Always set PGPASSWORD (empty string is fine for peer/ident auth)
+		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 		
 		return cmd
 	}
@@ -486,18 +657,22 @@ func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error 
 	// Database doesn't exist, create it
 	e.log.Info("Creating database", "name", dbName)
 	
-	createCmd := exec.CommandContext(ctx, "psql",
-		"-h", e.cfg.Host,
+	createArgs := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
 		"-c", fmt.Sprintf("CREATE DATABASE \"%s\"", dbName),
-	)
-	
-	// Set PGPASSWORD only if password is provided
-	if e.cfg.Password != "" {
-		createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		createArgs = append([]string{"-h", e.cfg.Host}, createArgs...)
+	}
+	
+	createCmd := exec.CommandContext(ctx, "psql", createArgs...)
+	
+	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
+	createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
 	output, err = createCmd.CombinedOutput()
 	if err != nil {
