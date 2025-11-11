@@ -292,6 +292,10 @@ func (p *PostgreSQL) BuildBackupCommand(database, outputFile string, options Bac
 		cmd = append(cmd, "--format=custom")
 	}
 	
+	// For plain format with compression==0, we want to stream to stdout so external
+	// compression can be used. Set a marker flag so caller knows to pipe stdout.
+	usesStdout := (options.Format == "plain" && options.Compression == 0)
+	
 	if options.Compression > 0 {
 		cmd = append(cmd, "--compress="+strconv.Itoa(options.Compression))
 	}
@@ -321,9 +325,14 @@ func (p *PostgreSQL) BuildBackupCommand(database, outputFile string, options Bac
 		cmd = append(cmd, "--role="+options.Role)
 	}
 	
-	// Database and output
+	// Database
 	cmd = append(cmd, "--dbname="+database)
-	cmd = append(cmd, "--file="+outputFile)
+	
+	// Output: For plain format with external compression, omit --file so pg_dump
+	// writes to stdout (caller will pipe to compressor). Otherwise specify output file.
+	if !usesStdout {
+		cmd = append(cmd, "--file="+outputFile)
+	}
 	
 	return cmd
 }

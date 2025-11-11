@@ -408,7 +408,12 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			failCount++
 			// Continue with other databases
 		} else {
-			if info, err := os.Stat(dumpFile); err == nil {
+			// If streaming compression was used the compressed file may have a different name
+			// (e.g. .sql.gz). Prefer compressed file size when present, fall back to dumpFile.
+			compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql.gz"
+			if info, err := os.Stat(compressedCandidate); err == nil {
+				e.printf("   ✅ Completed %s (%s)\n", dbName, formatBytes(info.Size()))
+			} else if info, err := os.Stat(dumpFile); err == nil {
 				e.printf("   ✅ Completed %s (%s)\n", dbName, formatBytes(info.Size()))
 			}
 			successCount++
@@ -840,26 +845,44 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	
 	e.log.Debug("Executing backup command", "cmd", cmdArgs[0], "args", cmdArgs[1:])
 	
-	// Check if this is a plain format dump (for large databases)
+	// Check if pg_dump will write to stdout (which means we need to handle piping to compressor).
+	// BuildBackupCommand omits --file when format==plain AND compression==0, causing pg_dump
+	// to write to stdout. In that case we must pipe to external compressor.
+	usesStdout := false
 	isPlainFormat := false
-	needsExternalCompression := false
-	
-	for i, arg := range cmdArgs {
-		if arg == "--format=plain" || arg == "-Fp" {
+	hasFileFlag := false
+
+	for _, arg := range cmdArgs {
+		if strings.HasPrefix(arg, "--format=") && strings.Contains(arg, "plain") {
 			isPlainFormat = true
 		}
-		if arg == "--compress=0" || (arg == "--compress" && i+1 < len(cmdArgs) && cmdArgs[i+1] == "0") {
-			needsExternalCompression = true
+		if arg == "-Fp" {
+			isPlainFormat = true
+		}
+		if arg == "--file" || strings.HasPrefix(arg, "--file=") {
+			hasFileFlag = true
 		}
 	}
+
+	// If plain format and no --file specified, pg_dump writes to stdout
+	if isPlainFormat && !hasFileFlag {
+		usesStdout = true
+	}
+	
+	e.log.Debug("Backup command analysis", 
+		"plain_format", isPlainFormat, 
+		"has_file_flag", hasFileFlag, 
+		"uses_stdout", usesStdout,
+		"output_file", outputFile)
 	
 	// For MySQL, handle compression differently
 	if e.cfg.IsMySQL() && e.cfg.CompressionLevel > 0 {
 		return e.executeMySQLWithCompression(ctx, cmdArgs, outputFile)
 	}
 	
-	// For plain format with large databases, use streaming compression
-	if isPlainFormat && needsExternalCompression {
+	// For plain format writing to stdout, use streaming compression
+	if usesStdout {
+		e.log.Debug("Using streaming compression for large database")
 		return e.executeWithStreamingCompression(ctx, cmdArgs, outputFile)
 	}
 	
@@ -914,8 +937,18 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
 	e.log.Debug("Using streaming compression for large database")
 	
-	// Modify output file to have .sql.gz extension
-	compressedFile := strings.TrimSuffix(outputFile, ".dump") + ".sql.gz"
+	// Derive compressed output filename. If the output was named *.dump we replace that
+	// with *.sql.gz; otherwise append .gz to the provided output file so we don't
+	// accidentally create unwanted double extensions.
+	var compressedFile string
+	lowerOut := strings.ToLower(outputFile)
+	if strings.HasSuffix(lowerOut, ".dump") {
+		compressedFile = strings.TrimSuffix(outputFile, ".dump") + ".sql.gz"
+	} else if strings.HasSuffix(lowerOut, ".sql") {
+		compressedFile = outputFile + ".gz"
+	} else {
+		compressedFile = outputFile + ".gz"
+	}
 	
 	// Create pg_dump command
 	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
