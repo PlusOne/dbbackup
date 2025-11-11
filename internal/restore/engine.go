@@ -202,20 +202,40 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB string, compressed bool) error {
 	// Use psql for SQL scripts
 	var cmd []string
+	
+	// For localhost, omit -h to use Unix socket (avoids Ident auth issues)
+	hostArg := ""
+	if e.cfg.Host != "localhost" && e.cfg.Host != "" {
+		hostArg = fmt.Sprintf("-h %s -p %d", e.cfg.Host, e.cfg.Port)
+	}
+	
 	if compressed {
+		psqlCmd := fmt.Sprintf("psql -U %s -d %s", e.cfg.User, targetDB)
+		if hostArg != "" {
+			psqlCmd = fmt.Sprintf("psql %s -U %s -d %s", hostArg, e.cfg.User, targetDB)
+		}
+		// Set PGPASSWORD in the bash command for password-less auth
 		cmd = []string{
 			"bash", "-c",
-			fmt.Sprintf("gunzip -c %s | psql -h %s -p %d -U %s -d %s",
-				archivePath, e.cfg.Host, e.cfg.Port, e.cfg.User, targetDB),
+			fmt.Sprintf("PGPASSWORD='%s' gunzip -c %s | %s", e.cfg.Password, archivePath, psqlCmd),
 		}
 	} else {
-		cmd = []string{
-			"psql",
-			"-h", e.cfg.Host,
-			"-p", fmt.Sprintf("%d", e.cfg.Port),
-			"-U", e.cfg.User,
-			"-d", targetDB,
-			"-f", archivePath,
+		if hostArg != "" {
+			cmd = []string{
+				"psql",
+				"-h", e.cfg.Host,
+				"-p", fmt.Sprintf("%d", e.cfg.Port),
+				"-U", e.cfg.User,
+				"-d", targetDB,
+				"-f", archivePath,
+			}
+		} else {
+			cmd = []string{
+				"psql",
+				"-U", e.cfg.User,
+				"-d", targetDB,
+				"-f", archivePath,
+			}
 		}
 	}
 
@@ -465,10 +485,24 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		}
 
 		// STEP 3: Restore with ownership preservation if superuser
+		// Detect if this is a .sql.gz file (plain SQL) or .dump file (custom format)
 		preserveOwnership := isSuperuser
-		if err := e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership); err != nil {
-			e.log.Error("Failed to restore database", "name", dbName, "error", err)
-			failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, err))
+		isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
+		
+		var restoreErr error
+		if isCompressedSQL {
+			// Plain SQL compressed - use psql with gunzip
+			e.log.Info("Detected compressed SQL format, using psql + gunzip", "file", dumpFile)
+			restoreErr = e.restorePostgreSQLSQL(ctx, dumpFile, dbName, true)
+		} else {
+			// Custom format - use pg_restore
+			e.log.Info("Detected custom dump format, using pg_restore", "file", dumpFile)
+			restoreErr = e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership)
+		}
+		
+		if restoreErr != nil {
+			e.log.Error("Failed to restore database", "name", dbName, "error", restoreErr)
+			failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, restoreErr))
 			failCount++
 			continue
 		}
