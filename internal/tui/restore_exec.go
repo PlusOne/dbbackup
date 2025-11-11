@@ -16,14 +16,16 @@ import (
 
 // RestoreExecutionModel handles restore execution with progress
 type RestoreExecutionModel struct {
-	config       *config.Config
-	logger       logger.Logger
-	parent       tea.Model
-	archive      ArchiveInfo
-	targetDB     string
-	cleanFirst   bool
+	config          *config.Config
+	logger          logger.Logger
+	parent          tea.Model
+	archive         ArchiveInfo
+	targetDB        string
+	cleanFirst      bool
 	createIfMissing bool
-	restoreType  string
+	restoreType     string
+	cleanClusterFirst bool     // Drop all user databases before cluster restore
+	existingDBs     []string   // List of databases to drop
 	
 	// Progress tracking
 	status       string
@@ -42,28 +44,30 @@ type RestoreExecutionModel struct {
 }
 
 // NewRestoreExecution creates a new restore execution model
-func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string) RestoreExecutionModel {
+func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) RestoreExecutionModel {
 	return RestoreExecutionModel{
-		config:       cfg,
-		logger:       log,
-		parent:       parent,
-		archive:      archive,
-		targetDB:     targetDB,
-		cleanFirst:   cleanFirst,
+		config:          cfg,
+		logger:          log,
+		parent:          parent,
+		archive:         archive,
+		targetDB:        targetDB,
+		cleanFirst:      cleanFirst,
 		createIfMissing: createIfMissing,
-		restoreType:  restoreType,
-		status:       "Initializing...",
-		phase:        "Starting",
-		startTime:    time.Now(),
-		details:      []string{},
-		spinnerFrames: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
-		spinnerFrame: 0,
+		restoreType:     restoreType,
+		cleanClusterFirst: cleanClusterFirst,
+		existingDBs:     existingDBs,
+		status:          "Initializing...",
+		phase:           "Starting",
+		startTime:       time.Now(),
+		details:         []string{},
+		spinnerFrames:   []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		spinnerFrame:    0,
 	}
 }
 
 func (m RestoreExecutionModel) Init() tea.Cmd {
 	return tea.Batch(
-		executeRestoreWithTUIProgress(m.config, m.logger, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.restoreType),
+		executeRestoreWithTUIProgress(m.config, m.logger, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.restoreType, m.cleanClusterFirst, m.existingDBs),
 		restoreTickCmd(),
 	)
 }
@@ -89,7 +93,7 @@ type restoreCompleteMsg struct {
 	elapsed time.Duration
 }
 
-func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string) tea.Cmd {
+func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
@@ -107,13 +111,41 @@ func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archiv
 		}
 		defer dbClient.Close()
 
-		// Create restore engine with silent progress (no stdout interference with TUI)
+		// STEP 1: Clean cluster if requested (drop all existing user databases)
+		if restoreType == "restore-cluster" && cleanClusterFirst && len(existingDBs) > 0 {
+			log.Info("Dropping existing user databases before cluster restore", "count", len(existingDBs))
+			
+			// Connect to database for cleanup
+			if err := dbClient.Connect(ctx); err != nil {
+				return restoreCompleteMsg{
+					result:  "",
+					err:     fmt.Errorf("failed to connect for cleanup: %w", err),
+					elapsed: time.Since(start),
+				}
+			}
+			
+			// Drop each database
+			droppedCount := 0
+			for _, dbName := range existingDBs {
+				if err := dbClient.DropDatabase(ctx, dbName); err != nil {
+					log.Warn("Failed to drop database", "name", dbName, "error", err)
+					// Continue with other databases
+				} else {
+					droppedCount++
+					log.Info("Dropped database", "name", dbName)
+				}
+			}
+			
+			log.Info("Cluster cleanup completed", "dropped", droppedCount, "total", len(existingDBs))
+		}
+
+		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)
 		engine := restore.NewSilent(cfg, log, dbClient)
 		
 		// Set up progress callback (but it won't work in goroutine - progress is already sent via logs)
 		// The TUI will just use spinner animation to show activity
 
-		// Execute restore based on type
+		// STEP 3: Execute restore based on type
 		var restoreErr error
 		if restoreType == "restore-cluster" {
 			restoreErr = engine.RestoreCluster(ctx, archive.Path)
@@ -132,6 +164,8 @@ func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archiv
 		result := fmt.Sprintf("Successfully restored from %s", archive.Name)
 		if restoreType == "restore-single" {
 			result = fmt.Sprintf("Successfully restored '%s' from %s", targetDB, archive.Name)
+		} else if restoreType == "restore-cluster" && cleanClusterFirst {
+			result = fmt.Sprintf("Successfully restored cluster from %s (cleaned %d existing database(s) first)", archive.Name, len(existingDBs))
 		}
 
 		return restoreCompleteMsg{

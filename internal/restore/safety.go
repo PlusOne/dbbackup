@@ -337,3 +337,85 @@ func (s *Safety) checkMySQLDatabaseExists(ctx context.Context, dbName string) (b
 
 	return strings.Contains(string(output), dbName), nil
 }
+
+// ListUserDatabases returns list of user databases (excludes templates and system DBs)
+func (s *Safety) ListUserDatabases(ctx context.Context) ([]string, error) {
+	if s.cfg.DatabaseType == "postgres" {
+		return s.listPostgresUserDatabases(ctx)
+	} else if s.cfg.DatabaseType == "mysql" || s.cfg.DatabaseType == "mariadb" {
+		return s.listMySQLUserDatabases(ctx)
+	}
+
+	return nil, fmt.Errorf("unsupported database type: %s", s.cfg.DatabaseType)
+}
+
+// listPostgresUserDatabases lists PostgreSQL user databases
+func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error) {
+	// Query to get non-template databases excluding 'postgres' system DB
+	query := "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres' ORDER BY datname"
+	
+	cmd := exec.CommandContext(ctx,
+		"psql",
+		"-h", s.cfg.Host,
+		"-p", fmt.Sprintf("%d", s.cfg.Port),
+		"-U", s.cfg.User,
+		"-d", "postgres",
+		"-tA", // Tuples only, unaligned
+		"-c", query,
+	)
+
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", s.cfg.Password))
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list databases: %w", err)
+	}
+
+	// Parse output
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	databases := []string{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			databases = append(databases, line)
+		}
+	}
+
+	return databases, nil
+}
+
+// listMySQLUserDatabases lists MySQL/MariaDB user databases
+func (s *Safety) listMySQLUserDatabases(ctx context.Context) ([]string, error) {
+	// Exclude system databases
+	query := "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY SCHEMA_NAME"
+	
+	cmd := exec.CommandContext(ctx,
+		"mysql",
+		"-h", s.cfg.Host,
+		"-P", fmt.Sprintf("%d", s.cfg.Port),
+		"-u", s.cfg.User,
+		"-N", // Skip column names
+		"-e", query,
+	)
+
+	if s.cfg.Password != "" {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", s.cfg.Password))
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list databases: %w", err)
+	}
+
+	// Parse output
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	databases := []string{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			databases = append(databases, line)
+		}
+	}
+
+	return databases, nil
+}

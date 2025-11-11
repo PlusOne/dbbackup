@@ -51,6 +51,9 @@ type RestorePreviewModel struct {
 	targetDB     string
 	cleanFirst   bool
 	createIfMissing bool
+	cleanClusterFirst bool // For cluster restore: drop all user databases first
+	existingDBCount  int    // Number of existing user databases
+	existingDBs      []string // List of existing user databases
 	safetyChecks []SafetyCheck
 	checking     bool
 	canProceed   bool
@@ -89,8 +92,10 @@ func (m RestorePreviewModel) Init() tea.Cmd {
 }
 
 type safetyCheckCompleteMsg struct {
-	checks     []SafetyCheck
-	canProceed bool
+	checks          []SafetyCheck
+	canProceed      bool
+	existingDBCount int
+	existingDBs     []string
 }
 
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
@@ -147,6 +152,9 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		checks = append(checks, check)
 
 		// 4. Target database check (skip for cluster restores)
+		existingDBCount := 0
+		existingDBs := []string{}
+		
 		if !archive.Format.IsClusterBackup() {
 			check = SafetyCheck{Name: "Target database", Status: "checking", Critical: false}
 			exists, err := safety.CheckDatabaseExists(ctx, targetDB)
@@ -162,13 +170,35 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 			}
 			checks = append(checks, check)
 		} else {
-			// For cluster restores, just show a general message
-			check = SafetyCheck{Name: "Cluster restore", Status: "passed", Critical: false}
-			check.Message = "Will restore all databases from cluster backup"
+			// For cluster restores, detect existing user databases
+			check = SafetyCheck{Name: "Existing databases", Status: "checking", Critical: false}
+			
+			// Get list of existing user databases (exclude templates and system DBs)
+			dbList, err := safety.ListUserDatabases(ctx)
+			if err != nil {
+				check.Status = "warning"
+				check.Message = fmt.Sprintf("Cannot list databases: %v", err)
+			} else {
+				existingDBCount = len(dbList)
+				existingDBs = dbList
+				
+				if existingDBCount > 0 {
+					check.Status = "warning"
+					check.Message = fmt.Sprintf("Found %d existing user database(s) - can be cleaned before restore", existingDBCount)
+				} else {
+					check.Status = "passed"
+					check.Message = "No existing user databases - clean slate"
+				}
+			}
 			checks = append(checks, check)
 		}
 
-		return safetyCheckCompleteMsg{checks: checks, canProceed: canProceed}
+		return safetyCheckCompleteMsg{
+			checks:          checks,
+			canProceed:      canProceed,
+			existingDBCount: existingDBCount,
+			existingDBs:     existingDBs,
+		}
 	}
 }
 
@@ -178,6 +208,8 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.checking = false
 		m.safetyChecks = msg.checks
 		m.canProceed = msg.canProceed
+		m.existingDBCount = msg.existingDBCount
+		m.existingDBs = msg.existingDBs
 		return m, nil
 
 	case tea.KeyMsg:
@@ -191,9 +223,19 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = fmt.Sprintf("Clean-first: %v", m.cleanFirst)
 
 		case "c":
-			// Toggle create if missing
-			m.createIfMissing = !m.createIfMissing
-			m.message = fmt.Sprintf("Create if missing: %v", m.createIfMissing)
+			if m.mode == "restore-cluster" {
+				// Toggle cluster cleanup
+				m.cleanClusterFirst = !m.cleanClusterFirst
+				if m.cleanClusterFirst {
+					m.message = checkWarningStyle.Render(fmt.Sprintf("⚠️  Will drop %d existing database(s) before restore", m.existingDBCount))
+				} else {
+					m.message = fmt.Sprintf("Clean cluster first: disabled")
+				}
+			} else {
+				// Toggle create if missing
+				m.createIfMissing = !m.createIfMissing
+				m.message = fmt.Sprintf("Create if missing: %v", m.createIfMissing)
+			}
 
 		case "enter", " ":
 			if m.checking {
@@ -207,7 +249,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Proceed to restore execution
-			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode)
+			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs)
 			return exec, exec.Init()
 		}
 	}
@@ -238,7 +280,7 @@ func (m RestorePreviewModel) View() string {
 	}
 	s.WriteString("\n")
 
-	// Target Information (only for single restore)
+	// Target Information
 	if m.mode == "restore-single" {
 		s.WriteString(archiveHeaderStyle.Render("🎯 Target Information"))
 		s.WriteString("\n")
@@ -256,6 +298,36 @@ func (m RestorePreviewModel) View() string {
 			createIcon = "✓"
 		}
 		s.WriteString(fmt.Sprintf("  Create If Missing: %s %v\n", createIcon, m.createIfMissing))
+		s.WriteString("\n")
+	} else if m.mode == "restore-cluster" {
+		s.WriteString(archiveHeaderStyle.Render("🎯 Cluster Restore Options"))
+		s.WriteString("\n")
+		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
+		
+		if m.existingDBCount > 0 {
+			s.WriteString(fmt.Sprintf("  Existing Databases: %d found\n", m.existingDBCount))
+			
+			// Show first few database names
+			maxShow := 5
+			for i, db := range m.existingDBs {
+				if i >= maxShow {
+					remaining := len(m.existingDBs) - maxShow
+					s.WriteString(fmt.Sprintf("    ... and %d more\n", remaining))
+					break
+				}
+				s.WriteString(fmt.Sprintf("    - %s\n", db))
+			}
+			
+			cleanIcon := "✗"
+			cleanStyle := infoStyle
+			if m.cleanClusterFirst {
+				cleanIcon = "✓"
+				cleanStyle = checkWarningStyle
+			}
+			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s %v (press 'c' to toggle)\n", cleanIcon, m.cleanClusterFirst)))
+		} else {
+			s.WriteString("  Existing Databases: None (clean slate)\n")
+		}
 		s.WriteString("\n")
 	}
 
@@ -303,6 +375,14 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(infoStyle.Render("   All existing data in target database will be dropped!"))
 		s.WriteString("\n\n")
 	}
+	if m.cleanClusterFirst && m.existingDBCount > 0 {
+		s.WriteString(checkWarningStyle.Render("🔥 WARNING: Cluster cleanup enabled"))
+		s.WriteString("\n")
+		s.WriteString(checkWarningStyle.Render(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", m.existingDBCount)))
+		s.WriteString("\n")
+		s.WriteString(infoStyle.Render("   This ensures a clean disaster recovery scenario"))
+		s.WriteString("\n\n")
+	}
 
 	// Message
 	if m.message != "" {
@@ -318,6 +398,12 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
 			s.WriteString(infoStyle.Render("⌨️  t: Toggle clean-first | c: Toggle create | Enter: Proceed | Esc: Cancel"))
+		} else if m.mode == "restore-cluster" {
+			if m.existingDBCount > 0 {
+				s.WriteString(infoStyle.Render("⌨️  c: Toggle cleanup | Enter: Proceed | Esc: Cancel"))
+			} else {
+				s.WriteString(infoStyle.Render("⌨️  Enter: Proceed | Esc: Cancel"))
+			}
 		} else {
 			s.WriteString(infoStyle.Render("⌨️  Enter: Proceed | Esc: Cancel"))
 		}
