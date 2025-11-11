@@ -460,7 +460,10 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		estimator.UpdateProgress(i)
 
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
-		dbName := strings.TrimSuffix(entry.Name(), ".dump")
+		// Strip file extensions to get database name (.dump or .sql.gz)
+		dbName := entry.Name()
+		dbName = strings.TrimSuffix(dbName, ".dump")
+		dbName = strings.TrimSuffix(dbName, ".sql.gz")
 
 		// Calculate progress percentage for logging
 		dbProgress := 15 + int(float64(i)/float64(totalDBs)*85.0)
