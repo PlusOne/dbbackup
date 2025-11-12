@@ -48,12 +48,6 @@ type dbTypeOption struct {
 	value string
 }
 
-type workloadOption struct {
-	label string
-	value string
-	desc  string
-}
-
 // MenuModel represents the simple menu state
 type MenuModel struct {
 	choices         []string
@@ -64,8 +58,6 @@ type MenuModel struct {
 	message         string
 	dbTypes         []dbTypeOption
 	dbTypeCursor    int
-	workloads       []workloadOption
-	workloadCursor  int
 
 	// Background operations
 	ctx    context.Context
@@ -81,24 +73,11 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 		{label: "MariaDB", value: "mariadb"},
 	}
 
-	workloads := []workloadOption{
-		{label: "Balanced", value: "balanced", desc: "General purpose"},
-		{label: "CPU-Intensive", value: "cpu-intensive", desc: "More parallelism"},
-		{label: "I/O-Intensive", value: "io-intensive", desc: "Less parallelism"},
-	}
-
 	dbCursor := 0
 	if cfg.DatabaseType == "mysql" {
 		dbCursor = 1
 	} else if cfg.DatabaseType == "mariadb" {
 		dbCursor = 2
-	}
-
-	workloadCursor := 0
-	if cfg.CPUWorkloadType == "cpu-intensive" {
-		workloadCursor = 1
-	} else if cfg.CPUWorkloadType == "io-intensive" {
-		workloadCursor = 2
 	}
 
 	model := MenuModel{
@@ -118,14 +97,12 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 			"Clear Operation History",
 			"Quit",
 		},
-		config:         cfg,
-		logger:         log,
-		ctx:            ctx,
-		cancel:         cancel,
-		dbTypes:        dbTypes,
-		dbTypeCursor:   dbCursor,
-		workloads:      workloads,
-		workloadCursor: workloadCursor,
+		config:       cfg,
+		logger:       log,
+		ctx:          ctx,
+		cancel:       cancel,
+		dbTypes:      dbTypes,
+		dbTypeCursor: dbCursor,
 	}
 
 	return model
@@ -164,24 +141,6 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.dbTypes) > 0 {
 				m.dbTypeCursor = (m.dbTypeCursor + 1) % len(m.dbTypes)
 				m.applyDatabaseSelection()
-			}
-
-		case "shift+left", "H":
-			if m.workloadCursor > 0 {
-				m.workloadCursor--
-				m.applyWorkloadSelection()
-			}
-
-		case "shift+right", "L":
-			if m.workloadCursor < len(m.workloads)-1 {
-				m.workloadCursor++
-				m.applyWorkloadSelection()
-			}
-
-		case "w":
-			if len(m.workloads) > 0 {
-				m.workloadCursor = (m.workloadCursor + 1) % len(m.workloads)
-				m.applyWorkloadSelection()
 			}
 
 		case "up", "k":
@@ -260,21 +219,6 @@ func (m MenuModel) View() string {
 		s += dbSelectorLabelStyle.Render(selector) + "\n"
 		hint := infoStyle.Render("Switch with ←/→ or t • Cluster backup requires PostgreSQL")
 		s += hint + "\n"
-	}
-
-	if len(m.workloads) > 0 {
-		options := make([]string, len(m.workloads))
-		for i, opt := range m.workloads {
-			if m.workloadCursor == i {
-				options[i] = menuSelectedStyle.Render(fmt.Sprintf("%s (%s)", opt.label, opt.desc))
-			} else {
-				options[i] = menuStyle.Render(opt.label)
-			}
-		}
-		selector := fmt.Sprintf("CPU Workload: %s", strings.Join(options, menuStyle.Render("  |  ")))
-		s += dbSelectorLabelStyle.Render(selector) + "\n"
-		hint := infoStyle.Render("Switch with Shift+←/→ or w • Affects parallelism and compression")
-		s += hint + "\n\n"
 	}
 
 	// Database info
@@ -403,52 +347,6 @@ func (m *MenuModel) applyDatabaseSelection() {
 	m.message = successStyle.Render(fmt.Sprintf("🔀 Target database set to %s", m.config.DisplayDatabaseType()))
 	if m.logger != nil {
 		m.logger.Info("updated target database type", "type", m.config.DatabaseType, "port", m.config.Port)
-	}
-}
-
-// applyWorkloadSelection updates the config with the selected workload type
-func (m *MenuModel) applyWorkloadSelection() {
-	if m.config == nil {
-		return
-	}
-	if m.workloadCursor < 0 || m.workloadCursor >= len(m.workloads) {
-		return
-	}
-
-	selection := m.workloads[m.workloadCursor]
-	m.config.CPUWorkloadType = selection.value
-
-	// Recalculate optimal settings based on workload type
-	if m.config.CPUInfo != nil && m.config.AutoDetectCores {
-		// Recalculate Jobs and DumpJobs based on new workload type
-		switch selection.value {
-		case "cpu-intensive":
-			// More parallelism for CPU-bound tasks
-			m.config.Jobs = m.config.CPUInfo.PhysicalCores * 2
-			m.config.DumpJobs = m.config.CPUInfo.PhysicalCores
-		case "io-intensive":
-			// Less parallelism to avoid I/O contention
-			m.config.Jobs = m.config.CPUInfo.PhysicalCores / 2
-			if m.config.Jobs < 1 {
-				m.config.Jobs = 1
-			}
-			m.config.DumpJobs = 2
-		default: // balanced
-			m.config.Jobs = m.config.CPUInfo.PhysicalCores
-			m.config.DumpJobs = m.config.CPUInfo.PhysicalCores / 2
-			if m.config.DumpJobs < 2 {
-				m.config.DumpJobs = 2
-			}
-		}
-	}
-
-	m.message = successStyle.Render(fmt.Sprintf("⚡ CPU workload set to %s (Jobs: %d, DumpJobs: %d)", 
-		selection.label, m.config.Jobs, m.config.DumpJobs))
-	if m.logger != nil {
-		m.logger.Info("updated CPU workload type", 
-			"type", m.config.CPUWorkloadType, 
-			"jobs", m.config.Jobs, 
-			"dump_jobs", m.config.DumpJobs)
 	}
 }
 
