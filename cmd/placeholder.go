@@ -730,12 +730,17 @@ func containsSQLKeywords(content string) bool {
 }
 
 func mysqlRestoreCommand(archivePath string, compressed bool) string {
-	parts := []string{
-		"mysql",
-		"-h", cfg.Host,
+	parts := []string{"mysql"}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket)
+	if cfg.Host != "localhost" && cfg.Host != "127.0.0.1" && cfg.Host != "" {
+		parts = append(parts, "-h", cfg.Host)
+	}
+	
+	parts = append(parts,
 		"-P", fmt.Sprintf("%d", cfg.Port),
 		"-u", cfg.User,
-	}
+	)
 
 	if cfg.Password != "" {
 		parts = append(parts, fmt.Sprintf("-p'%s'", cfg.Password))

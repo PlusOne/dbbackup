@@ -326,13 +326,18 @@ func (s *Safety) checkPostgresDatabaseExists(ctx context.Context, dbName string)
 
 // checkMySQLDatabaseExists checks if MySQL database exists
 func (s *Safety) checkMySQLDatabaseExists(ctx context.Context, dbName string) (bool, error) {
-	cmd := exec.CommandContext(ctx,
-		"mysql",
-		"-h", s.cfg.Host,
+	args := []string{
 		"-P", fmt.Sprintf("%d", s.cfg.Port),
 		"-u", s.cfg.User,
 		"-e", fmt.Sprintf("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='%s'", dbName),
-	)
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket)
+	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
+		args = append([]string{"-h", s.cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "mysql", args...)
 
 	if s.cfg.Password != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", s.cfg.Password))
@@ -405,14 +410,19 @@ func (s *Safety) listMySQLUserDatabases(ctx context.Context) ([]string, error) {
 	// Exclude system databases
 	query := "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY SCHEMA_NAME"
 	
-	cmd := exec.CommandContext(ctx,
-		"mysql",
-		"-h", s.cfg.Host,
+	args := []string{
 		"-P", fmt.Sprintf("%d", s.cfg.Port),
 		"-u", s.cfg.User,
 		"-N", // Skip column names
 		"-e", query,
-	)
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket)
+	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
+		args = append([]string{"-h", s.cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "mysql", args...)
 
 	if s.cfg.Password != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", s.cfg.Password))
