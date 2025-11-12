@@ -1,11 +1,6 @@
 # dbbackup# dbbackup
 
 
-
-![dbbackup](dbbackup.png)![dbbackup](dbbackup.png)
-
-
-
 Professional database backup and restore utility for PostgreSQL, MySQL, and MariaDB with support for large databases and cluster operations.Database backup utility for PostgreSQL and MySQL with support for large databases.
 
 
