@@ -144,6 +144,35 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case backupTickMsg:
 		if !m.done {
+			// Update status based on elapsed time to show progress
+			elapsedSec := int(time.Since(m.startTime).Seconds())
+			
+			if elapsedSec < 2 {
+				m.status = "Initializing backup..."
+			} else if elapsedSec < 5 {
+				if m.backupType == "cluster" {
+					m.status = "Connecting to database cluster..."
+				} else {
+					m.status = fmt.Sprintf("Connecting to database '%s'...", m.databaseName)
+				}
+			} else if elapsedSec < 10 {
+				if m.backupType == "cluster" {
+					m.status = "Backing up global objects (roles, tablespaces)..."
+				} else if m.backupType == "sample" {
+					m.status = fmt.Sprintf("Analyzing tables for sampling (ratio: %d)...", m.ratio)
+				} else {
+					m.status = fmt.Sprintf("Dumping database '%s'...", m.databaseName)
+				}
+			} else {
+				if m.backupType == "cluster" {
+					m.status = "Backing up cluster databases..."
+				} else if m.backupType == "sample" {
+					m.status = fmt.Sprintf("Creating sample backup of '%s'...", m.databaseName)
+				} else {
+					m.status = fmt.Sprintf("Backing up database '%s'...", m.databaseName)
+				}
+			}
+			
 			return m, backupTickCmd()
 		}
 		return m, nil
