@@ -15,6 +15,9 @@ import (
 	"dbbackup/internal/restore"
 )
 
+// Shared spinner frames for consistent animation across all TUI operations
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 // RestoreExecutionModel handles restore execution with progress
 type RestoreExecutionModel struct {
 	config          *config.Config
@@ -61,7 +64,7 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 		phase:           "Starting",
 		startTime:       time.Now(),
 		details:         []string{},
-		spinnerFrames:   []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		spinnerFrames:   spinnerFrames, // Use package-level constant
 		spinnerFrame:    0,
 	}
 }
@@ -76,7 +79,7 @@ func (m RestoreExecutionModel) Init() tea.Cmd {
 type restoreTickMsg time.Time
 
 func restoreTickCmd() tea.Cmd {
-	return tea.Tick(time.Millisecond*200, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 		return restoreTickMsg(t)
 	})
 }
@@ -96,7 +99,9 @@ type restoreCompleteMsg struct {
 
 func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+		// Use configurable cluster timeout (minutes) from config; default set in config.New()
+		restoreTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
+		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
 		defer cancel()
 
 		start := time.Now()
@@ -120,13 +125,16 @@ func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archiv
 			// This matches how cluster restore works - uses CLI tools, not database connections
 			droppedCount := 0
 			for _, dbName := range existingDBs {
-				if err := dropDatabaseCLI(ctx, cfg, dbName); err != nil {
+				// Create timeout context for each database drop (30 seconds per DB)
+				dropCtx, dropCancel := context.WithTimeout(ctx, 30*time.Second)
+				if err := dropDatabaseCLI(dropCtx, cfg, dbName); err != nil {
 					log.Warn("Failed to drop database", "name", dbName, "error", err)
 					// Continue with other databases
 				} else {
 					droppedCount++
 					log.Info("Dropped database", "name", dbName)
 				}
+				dropCancel() // Clean up context
 			}
 			
 			log.Info("Cluster cleanup completed", "dropped", droppedCount, "total", len(existingDBs))
@@ -263,6 +271,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m RestoreExecutionModel) View() string {
 	var s strings.Builder
+	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
 	// Title
 	title := "💾 Restoring Database"

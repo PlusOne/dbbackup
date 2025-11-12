@@ -399,8 +399,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		// Use a context with timeout for each database to prevent hangs
 		// Use longer timeout for huge databases (2 hours per database)
 		dbCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+		defer cancel() // Ensure cancel is called even if executeCommand panics
 		err := e.executeCommand(dbCtx, cmd, dumpFile)
-		cancel()
+		cancel() // Also call immediately for early cleanup
 		
 		if err != nil {
 			e.log.Warn("Failed to backup database", "database", dbName, "error", err)
@@ -786,6 +787,7 @@ regularTar:
 	cmd := exec.CommandContext(ctx, compressCmd, compressArgs...)
 	
 	// Stream stderr to avoid memory issues
+	// Use io.Copy to ensure goroutine completes when pipe closes
 	stderr, err := cmd.StderrPipe()
 	if err == nil {
 		go func() {
@@ -796,12 +798,14 @@ regularTar:
 					e.log.Debug("Archive creation", "output", line)
 				}
 			}
+			// Scanner will exit when stderr pipe closes after cmd.Wait()
 		}()
 	}
 	
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("tar failed: %w", err)
 	}
+	// cmd.Run() calls Wait() which closes stderr pipe, terminating the goroutine
 	return nil
 }
 

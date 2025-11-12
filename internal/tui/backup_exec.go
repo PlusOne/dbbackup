@@ -29,6 +29,7 @@ type BackupExecutionModel struct {
 	result       string
 	startTime    time.Time
 	details      []string
+	spinnerFrame int
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, backupType, dbName string, ratio int) BackupExecutionModel {
@@ -42,6 +43,7 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 		status:       "Initializing...",
 		startTime:    time.Now(),
 		details:      []string{},
+		spinnerFrame: 0,
 	}
 }
 
@@ -144,6 +146,9 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case backupTickMsg:
 		if !m.done {
+			// Increment spinner frame for smooth animation
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+			
 			// Update status based on elapsed time to show progress
 			elapsedSec := int(time.Since(m.startTime).Seconds())
 			
@@ -207,6 +212,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m BackupExecutionModel) View() string {
 	var s strings.Builder
+	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
 	// Clear screen with newlines and render header
 	s.WriteString("\n\n")
@@ -227,9 +233,7 @@ func (m BackupExecutionModel) View() string {
 
 	// Status with spinner
 	if !m.done {
-		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		frame := int(time.Since(m.startTime).Milliseconds()/100) % len(spinner)
-		s.WriteString(fmt.Sprintf("  %s %s\n", spinner[frame], m.status))
+		s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
 	} else {
 		s.WriteString(fmt.Sprintf("  %s\n\n", m.status))
 		
