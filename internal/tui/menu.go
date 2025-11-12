@@ -324,9 +324,13 @@ func (m MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 		m.message = errorStyle.Render("❌ Cluster backup is available only for PostgreSQL targets")
 		return m, nil
 	}
-	confirm := NewConfirmationModel(m.config, m.logger, m,
+	confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
 		"🗄️  Cluster Backup",
-		"This will backup ALL databases in the cluster. Continue?")
+		"This will backup ALL databases in the cluster. Continue?",
+		func() (tea.Model, tea.Cmd) {
+			executor := NewBackupExecution(m.config, m.logger, m, "cluster", "", 0)
+			return executor, executor.Init()
+		})
 	return confirm, nil
 }
 

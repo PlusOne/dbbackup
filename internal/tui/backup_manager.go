@@ -87,9 +87,23 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Delete archive (with confirmation)
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
-				confirm := NewConfirmationModel(m.config, m.logger, m,
+				archivePath := selected.Path
+				confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
 					"🗑️  Delete Archive",
-					fmt.Sprintf("Delete archive '%s'? This cannot be undone.", selected.Name))
+					fmt.Sprintf("Delete archive '%s'? This cannot be undone.", selected.Name),
+					func() (tea.Model, tea.Cmd) {
+						// Delete the archive
+						err := deleteArchive(archivePath)
+						if err != nil {
+							m.err = fmt.Errorf("failed to delete archive: %v", err)
+							m.message = fmt.Sprintf("❌ Failed to delete: %v", err)
+						} else {
+							m.message = fmt.Sprintf("✅ Deleted: %s", selected.Name)
+						}
+						// Refresh the archive list
+						m.loading = true
+						return m, loadArchives(m.config, m.logger)
+					})
 				return confirm, nil
 			}
 

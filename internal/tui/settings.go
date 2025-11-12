@@ -61,6 +61,47 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Target database engine (press Enter to cycle: PostgreSQL → MySQL → MariaDB)",
 		},
 		{
+			Key:         "cpu_workload",
+			DisplayName: "CPU Workload Type",
+			Value:       func(c *config.Config) string { return c.CPUWorkloadType },
+			Update: func(c *config.Config, v string) error {
+				workloads := []string{"balanced", "cpu-intensive", "io-intensive"}
+				currentIdx := 0
+				for i, w := range workloads {
+					if c.CPUWorkloadType == w {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(workloads)
+				c.CPUWorkloadType = workloads[nextIdx]
+				
+				// Recalculate Jobs and DumpJobs based on workload type
+				if c.CPUInfo != nil && c.AutoDetectCores {
+					switch c.CPUWorkloadType {
+					case "cpu-intensive":
+						c.Jobs = c.CPUInfo.PhysicalCores * 2
+						c.DumpJobs = c.CPUInfo.PhysicalCores
+					case "io-intensive":
+						c.Jobs = c.CPUInfo.PhysicalCores / 2
+						if c.Jobs < 1 {
+							c.Jobs = 1
+						}
+						c.DumpJobs = 2
+					default: // balanced
+						c.Jobs = c.CPUInfo.PhysicalCores
+						c.DumpJobs = c.CPUInfo.PhysicalCores / 2
+						if c.DumpJobs < 2 {
+							c.DumpJobs = 2
+						}
+					}
+				}
+				return nil
+			},
+			Type:        "selector",
+			Description: "CPU workload profile (press Enter to cycle: Balanced → CPU-Intensive → I/O-Intensive)",
+		},
+		{
 			Key:         "backup_dir",
 			DisplayName: "Backup Directory",
 			Value:       func(c *config.Config) string { return c.BackupDir },

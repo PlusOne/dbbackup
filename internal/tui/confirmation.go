@@ -12,14 +12,15 @@ import (
 
 // ConfirmationModel for yes/no confirmations
 type ConfirmationModel struct {
-	config   *config.Config
-	logger   logger.Logger
-	parent   tea.Model
-	title    string
-	message  string
-	cursor   int
-	choices  []string
+	config    *config.Config
+	logger    logger.Logger
+	parent    tea.Model
+	title     string
+	message   string
+	cursor    int
+	choices   []string
 	confirmed bool
+	onConfirm func() (tea.Model, tea.Cmd) // Callback when confirmed
 }
 
 func NewConfirmationModel(cfg *config.Config, log logger.Logger, parent tea.Model, title, message string) ConfirmationModel {
@@ -30,6 +31,18 @@ func NewConfirmationModel(cfg *config.Config, log logger.Logger, parent tea.Mode
 		title:   title,
 		message: message,
 		choices: []string{"Yes", "No"},
+	}
+}
+
+func NewConfirmationModelWithAction(cfg *config.Config, log logger.Logger, parent tea.Model, title, message string, onConfirm func() (tea.Model, tea.Cmd)) ConfirmationModel {
+	return ConfirmationModel{
+		config:    cfg,
+		logger:    log,
+		parent:    parent,
+		title:     title,
+		message:   message,
+		choices:   []string{"Yes", "No"},
+		onConfirm: onConfirm,
 	}
 }
 
@@ -57,7 +70,11 @@ func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "y":
 			if msg.String() == "y" || m.cursor == 0 {
 				m.confirmed = true
-				// Execute cluster backup
+				// Execute the onConfirm callback if provided
+				if m.onConfirm != nil {
+					return m.onConfirm()
+				}
+				// Default: execute cluster backup for backward compatibility
 				executor := NewBackupExecution(m.config, m.logger, m.parent, "cluster", "", 0)
 				return executor, executor.Init()
 			}
