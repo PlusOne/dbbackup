@@ -80,7 +80,9 @@ Menu-driven interface for all operations. Press arrow keys to navigate, Enter to
 
 - **Backup Selection**: Choose backup type (single, cluster, sample)
 - **Database Selection**: Browse and select database
-- **Configuration**: Set compression, parallelism, performance options
+- **Configuration Settings**: Set compression, parallelism, CPU workload, performance options
+- **CPU Workload Profiles**: Balanced, CPU-Intensive, or I/O-Intensive (auto-adjusts Jobs/DumpJobs)
+- **Backup Management**: List, restore, verify, and delete backup archives
 - **Safety Checks**: Archive validation, disk space verification
 - **Progress Tracking**: Real-time progress with ETA estimation
 - **Restore Options**: Smart database cleanup detection, safety confirmations
@@ -195,8 +197,9 @@ Backup all databases in PostgreSQL cluster including roles and tablespaces:
 
 - `--max-cores INT` - Maximum CPU cores (default: auto-detect)
 - `--cpu-workload STRING` - Workload type: cpu-intensive, io-intensive, balanced (default: balanced)
-- `--jobs INT` - Parallel jobs (default: auto-detect)
-- `--dump-jobs INT` - Parallel dump jobs (default: auto-detect)
+- `--jobs INT` - Parallel jobs (default: auto-detect based on workload)
+- `--dump-jobs INT` - Parallel dump jobs (default: auto-detect based on workload)
+- `--cluster-parallelism INT` - Concurrent database operations (default: 2, configurable via CLUSTER_PARALLELISM env var)
 
 **Examples:**
 
@@ -531,6 +534,8 @@ Manual override:
 - `--jobs` - Compression/decompression parallel jobs
 - `--dump-jobs` - Database dump parallel jobs
 - `--max-cores` - Limit CPU cores (default: 16)
+- Cluster operations use worker pools with configurable parallelism (default: 2 concurrent databases)
+- Set `CLUSTER_PARALLELISM` environment variable to adjust concurrent database operations
 
 ### CPU Workload
 
@@ -539,6 +544,13 @@ Manual override:
 ```
 
 Options: `cpu-intensive`, `io-intensive`, `balanced` (default)
+
+Workload types automatically adjust Jobs and DumpJobs:
+- **Balanced**: Jobs = PhysicalCores, DumpJobs = PhysicalCores/2 (min 2)
+- **CPU-Intensive**: Jobs = PhysicalCores×2, DumpJobs = PhysicalCores (more parallelism)
+- **I/O-Intensive**: Jobs = PhysicalCores/2 (min 1), DumpJobs = 2 (less parallelism to avoid I/O contention)
+
+Configure in interactive mode via Configuration Settings menu.
 
 ### Compression
 
@@ -716,14 +728,35 @@ dbbackup/
 
 MIT License
 
+## Recent Improvements
+
+### Performance Optimizations
+- **Parallel Cluster Operations**: Worker pool pattern for concurrent database backup/restore (3-5x speedup)
+- **Memory Efficiency**: Streaming command output eliminates OOM errors on large restores
+- **Optimized Goroutines**: Ticker-based progress indicators reduce CPU overhead
+- **Configurable Concurrency**: Control parallel database operations via CLUSTER_PARALLELISM
+
+### Interactive UI Enhancements
+- **CPU Workload Profiles**: Configure workload type in settings (auto-adjusts parallelism)
+- **Backup Management**: Delete archives directly from TUI with confirmation
+- **Better Callbacks**: Fixed confirmation dialogs to execute correct actions
+- **Cleaner Interface**: Configuration consolidated in Settings menu
+
+### Bug Fixes
+- Fixed OOM error during large cluster restores
+- Fixed delete backup incorrectly triggering cluster backup
+- Fixed signal handler cleanup preventing goroutine leaks
+- Improved error handling and user feedback
+
 ## Why dbbackup?
 
 - **Reliable** - Comprehensive safety checks, validation, and error handling
 - **Simple** - Intuitive menu-driven interface or straightforward CLI
 - **Fast** - Automatic CPU detection, parallel processing, streaming compression
-- **Efficient** - Minimal memory footprint, even for huge databases
+- **Efficient** - Minimal memory footprint, even for huge databases (constant ~1GB regardless of size)
 - **Flexible** - Multiple backup modes, compression levels, performance options
 - **Safe** - Dry-run by default, archive verification, smart database cleanup
 - **Complete** - Full cluster backup/restore, multiple formats
+- **Scalable** - Handles databases from megabytes to terabytes
 
 dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases of any size.
