@@ -1,970 +1,609 @@
-# dbbackup# dbbackup
+# dbbackup
 
+![dbbackup](dbbackup.png)
 
+Professional database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
-![dbbackup](dbbackup.png)![dbbackup](dbbackup.png)
+## Key Features
 
-
-
-Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.Professional database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
-
-
-
-## Installation## Overview
-
-
-
-### Pre-built Binaries**dbbackup** is a production-ready database backup tool providing both interactive and command-line interfaces for backup and restore operations. Designed for reliability, performance, and ease of use.
-
-
-
-Download for your platform:### Key Features
-
-
-
-```bash- Multi-database support: PostgreSQL, MySQL, MariaDB
-
-# Linux x86_64- Backup modes: Single database, cluster, sample data
-
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_amd64 -o dbbackup- Restore operations with safety checks and validation
-
-chmod +x dbbackup- Automatic CPU detection and parallel processing
-
+- Multi-database support: PostgreSQL, MySQL, MariaDB
+- Backup modes: Single database, cluster, sample data
+- Restore operations with safety checks and validation
+- Automatic CPU detection and parallel processing
 - Streaming compression for large databases
-
-# Linux ARM64- Interactive terminal UI with progress tracking
-
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_arm64 -o dbbackup- Cross-platform binaries (Linux, macOS, BSD)
-
-chmod +x dbbackup
+- Interactive terminal UI with progress tracking
+- Cross-platform binaries (Linux, macOS, BSD)
 
 ## Installation
 
-# macOS Intel
+### Download Pre-compiled Binary
 
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_amd64 -o dbbackup### Download Pre-compiled Binary
-
-chmod +x dbbackup
+Linux x86_64:
 
 ```bash
-
-# macOS Apple Silicon# Linux x86_64
-
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_arm64 -o dbbackupcurl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_amd64 -o dbbackup
-
-chmod +x dbbackupchmod +x dbbackup
-
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_amd64 -o dbbackup
+chmod +x dbbackup
 ```
 
-# Linux ARM64
+Linux ARM64:
 
-Other platforms available in `bin/` directory (FreeBSD, OpenBSD, NetBSD).curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_arm64 -o dbbackup
-
+```bash
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_arm64 -o dbbackup
 chmod +x dbbackup
+```
+
+macOS Intel:
+
+```bash
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_amd64 -o dbbackup
+chmod +x dbbackup
+```
+
+macOS Apple Silicon:
+
+```bash
+curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_arm64 -o dbbackup
+chmod +x dbbackup
+```
+
+Other platforms available in `bin/` directory: FreeBSD, OpenBSD, NetBSD.
 
 ### Build from Source
 
-# macOS Intel
+Requires Go 1.19 or later:
 
-```bashcurl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_amd64 -o dbbackup
-
-git clone https://git.uuxo.net/uuxo/dbbackup.gitchmod +x dbbackup
-
-cd dbbackup
-
-go build# macOS Apple Silicon
-
-```curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_arm64 -o dbbackup
-
-chmod +x dbbackup
-
-## Quick Start```
-
-
-
-### Interactive Mode (Recommended)Other platforms available in `bin/` directory: FreeBSD, OpenBSD, NetBSD, Windows.
-
-
-
-```bash### Build from Source
-
-./dbbackup interactive
-
-```Requires Go 1.19 or later:
-
-
-
-Menu-driven interface for all operations. Press arrow keys to navigate, Enter to select.```bash
-
+```bash
 git clone https://git.uuxo.net/uuxo/dbbackup.git
-
-#### Interactive Featurescd dbbackup
-
+cd dbbackup
 go build
-
-- **Backup Selection**: Choose backup type (single, cluster, sample)```
-
-- **Database Selection**: Browse and select database
-
-- **Configuration**: Set compression, parallelism, performance options## Quick Start
-
-- **Safety Checks**: Archive validation, disk space verification
-
-- **Progress Tracking**: Real-time progress with ETA estimation### Interactive Mode
-
-- **Restore Options**: Smart database cleanup detection, safety confirmations
-
-```bash
-
-### Command Line Mode# PostgreSQL (peer authentication)
-
-sudo -u postgres ./dbbackup interactive
-
-```bash
-
-# Backup single database# MySQL/MariaDB
-
-./dbbackup backup single mydb./dbbackup interactive --db-type mysql --user root --password secret
-
 ```
 
-# Backup entire cluster (PostgreSQL)
+## Quick Start
 
-./dbbackup backup cluster### Command Line
+### Interactive Mode
 
+PostgreSQL (peer authentication):
 
+```bash
+sudo -u postgres ./dbbackup interactive
+```
 
-# Restore from backup```bash
+MySQL/MariaDB:
 
-./dbbackup restore single mydb.dump.gz --target mydb_restored --confirm# Backup single database
+```bash
+./dbbackup interactive --db-type mysql --user root --password secret
+```
 
+Menu-driven interface for all operations. Press arrow keys to navigate, Enter to select.
+
+#### Interactive Features
+
+- **Backup Selection**: Choose backup type (single, cluster, sample)
+- **Database Selection**: Browse and select database
+- **Configuration**: Set compression, parallelism, performance options
+- **Safety Checks**: Archive validation, disk space verification
+- **Progress Tracking**: Real-time progress with ETA estimation
+- **Restore Options**: Smart database cleanup detection, safety confirmations
+
+### Command Line Mode
+
+Backup single database:
+
+```bash
 ./dbbackup backup single myapp_db
+```
 
-# Restore full cluster
+Backup entire cluster (PostgreSQL):
 
-./dbbackup restore cluster cluster_backup.tar.gz --confirm# Backup entire cluster (PostgreSQL)
+```bash
+./dbbackup backup cluster
+```
 
-```./dbbackup backup cluster
+Restore database:
 
-
-
-## Commands# Restore database
-
+```bash
 ./dbbackup restore single backup.dump --target myapp_db --create
+```
+
+Restore full cluster:
+
+```bash
+./dbbackup restore cluster cluster_backup.tar.gz --confirm
+```
+
+## Commands
 
 ### Global Flags (Available for all commands)
 
-# Restore cluster
-
-| Flag | Description | Default |./dbbackup restore cluster cluster_backup.tar.gz --confirm
-
-|------|-------------|---------|```
-
+| Flag | Description | Default |
+|------|-------------|---------|
 | `-d, --db-type` | postgres, mysql, mariadb | postgres |
-
-| `--host` | Database host | localhost |## Backup Operations
-
+| `--host` | Database host | localhost |
 | `--port` | Database port | 5432 (postgres), 3306 (mysql) |
-
-| `--user` | Database user | root |### Single Database
-
+| `--user` | Database user | root |
 | `--password` | Database password | (empty) |
-
-| `--database` | Database name | postgres |Backup a single database to compressed archive:
-
+| `--database` | Database name | postgres |
 | `--backup-dir` | Backup directory | /root/db_backups |
-
-| `--compression` | Compression level 0-9 | 6 |```bash
-
-| `--ssl-mode` | disable, prefer, require, verify-ca, verify-full | prefer |./dbbackup backup single DATABASE_NAME [OPTIONS]
-
-| `--insecure` | Disable SSL/TLS | false |```
-
+| `--compression` | Compression level 0-9 | 6 |
+| `--ssl-mode` | disable, prefer, require, verify-ca, verify-full | prefer |
+| `--insecure` | Disable SSL/TLS | false |
 | `--jobs` | Parallel jobs | 8 |
-
-| `--dump-jobs` | Parallel dump jobs | 8 |**Common Options:**
-
+| `--dump-jobs` | Parallel dump jobs | 8 |
 | `--max-cores` | Maximum CPU cores | 16 |
+| `--cpu-workload` | cpu-intensive, io-intensive, balanced | balanced |
+| `--auto-detect-cores` | Auto-detect CPU cores | true |
+| `--debug` | Enable debug logging | false |
+| `--no-color` | Disable colored output | false |
 
-| `--cpu-workload` | cpu-intensive, io-intensive, balanced | balanced |- `--host STRING` - Database host (default: localhost)
+### Backup Operations
 
-| `--auto-detect-cores` | Auto-detect CPU cores | true |- `--port INT` - Database port (default: 5432 PostgreSQL, 3306 MySQL)
+#### Single Database
 
-| `--debug` | Enable debug logging | false |- `--user STRING` - Database user (default: postgres)
-
-| `--no-color` | Disable colored output | false |- `--password STRING` - Database password
-
-- `--db-type STRING` - Database type: postgres, mysql, mariadb (default: postgres)
-
-### Backup Commands- `--backup-dir STRING` - Backup directory (default: /var/lib/pgsql/db_backups)
-
-- `--compression INT` - Compression level 0-9 (default: 6)
-
-#### backup single - Single Database Backup- `--insecure` - Disable SSL/TLS
-
-- `--ssl-mode STRING` - SSL mode: disable, prefer, require, verify-ca, verify-full
-
-Create backup of one database with full schema and data.
-
-**Examples:**
+Backup a single database to compressed archive:
 
 ```bash
-
-./dbbackup backup single <database> [flags]```bash
-
-```# Basic backup
-
-./dbbackup backup single production_db
-
-Example:
-
-```bash# Remote database with custom settings
-
-./dbbackup backup single myapp_db \./dbbackup backup single myapp \
-
-  --host db.example.com \  --host db.example.com \
-
-  --user backup_user \  --port 5432 \
-
-  --password secret \  --user backup_user \
-
-  --compression 9  --password secret \
-
-```  --compression 9 \
-
-  --backup-dir /mnt/backups
-
-Supported formats:
-
-- PostgreSQL: Custom format (.dump) or SQL (.sql)# MySQL database
-
-- MySQL/MariaDB: SQL (.sql)./dbbackup backup single wordpress \
-
-  --db-type mysql \
-
-#### backup cluster - Full Cluster Backup  --user root \
-
-  --password secret
-
-Complete backup of all databases, roles, and tablespaces (PostgreSQL only).```
-
-
-
-```bash### Cluster Backup (PostgreSQL)
-
-./dbbackup backup cluster [flags]
-
-```Backup all databases in PostgreSQL cluster including roles and tablespaces:
-
-
-
-Example:```bash
-
-```bash./dbbackup backup cluster [OPTIONS]
-
-sudo -u postgres ./dbbackup backup cluster \```
-
-  --compression 3 \
-
-  --max-cores 16 \**Performance Options:**
-
-  --cpu-workload cpu-intensive
-
-```- `--max-cores INT` - Maximum CPU cores (default: auto-detect)
-
-- `--cpu-workload STRING` - Workload type: cpu-intensive, io-intensive, balanced (default: balanced)
-
-Output: tar.gz archive containing all databases and globals.- `--jobs INT` - Parallel jobs (default: auto-detect)
-
-- `--dump-jobs INT` - Parallel dump jobs (default: auto-detect)
-
-#### backup sample - Sample Database Backup
-
-**Examples:**
-
-Reduced dataset backup for testing/development.
-
-```bash
-
-```bash# Standard cluster backup
-
-./dbbackup backup sample <database> [flags]sudo -u postgres ./dbbackup backup cluster
-
+./dbbackup backup single DATABASE_NAME [OPTIONS]
 ```
 
+**Common Options:**
+
+- `--host STRING` - Database host (default: localhost)
+- `--port INT` - Database port (default: 5432 PostgreSQL, 3306 MySQL)
+- `--user STRING` - Database user (default: postgres)
+- `--password STRING` - Database password
+- `--db-type STRING` - Database type: postgres, mysql, mariadb (default: postgres)
+- `--backup-dir STRING` - Backup directory (default: /var/lib/pgsql/db_backups)
+- `--compression INT` - Compression level 0-9 (default: 6)
+- `--insecure` - Disable SSL/TLS
+- `--ssl-mode STRING` - SSL mode: disable, prefer, require, verify-ca, verify-full
+
+**Examples:**
+
+```bash
+# Basic backup
+./dbbackup backup single production_db
+
+# Remote database with custom settings
+./dbbackup backup single myapp_db \
+  --host db.example.com \
+  --port 5432 \
+  --user backup_user \
+  --password secret \
+  --compression 9 \
+  --backup-dir /mnt/backups
+
+# MySQL database
+./dbbackup backup single wordpress \
+  --db-type mysql \
+  --user root \
+  --password secret
+```
+
+Supported formats:
+- PostgreSQL: Custom format (.dump) or SQL (.sql)
+- MySQL/MariaDB: SQL (.sql)
+
+#### Cluster Backup (PostgreSQL)
+
+Backup all databases in PostgreSQL cluster including roles and tablespaces:
+
+```bash
+./dbbackup backup cluster [OPTIONS]
+```
+
+**Performance Options:**
+
+- `--max-cores INT` - Maximum CPU cores (default: auto-detect)
+- `--cpu-workload STRING` - Workload type: cpu-intensive, io-intensive, balanced (default: balanced)
+- `--jobs INT` - Parallel jobs (default: auto-detect)
+- `--dump-jobs INT` - Parallel dump jobs (default: auto-detect)
+
+**Examples:**
+
+```bash
+# Standard cluster backup
+sudo -u postgres ./dbbackup backup cluster
+
 # High-performance backup
+sudo -u postgres ./dbbackup backup cluster \
+  --compression 3 \
+  --max-cores 16 \
+  --cpu-workload cpu-intensive \
+  --jobs 16
+```
 
-Sample flags:sudo -u postgres ./dbbackup backup cluster \
+Output: tar.gz archive containing all databases and globals.
 
-- `--sample-strategy` - ratio, percent, count (default: ratio)  --compression 3 \
+#### Sample Backup
 
-- `--sample-value` - Value based on strategy (default: 10)  --max-cores 16 \
-
-- `--sample-ratio` - Take every Nth record  --cpu-workload cpu-intensive \
-
-- `--sample-percent` - Take N% of records  --jobs 16
-
-- `--sample-count` - Take first N records per table```
-
-
-
-Examples:### Sample Backup
+Create reduced-size backup for testing/development:
 
 ```bash
+./dbbackup backup sample DATABASE_NAME [OPTIONS]
+```
 
-# Every 10th recordCreate reduced-size backup for testing/development:
+**Options:**
 
-./dbbackup backup sample mydb --sample-ratio 10
-
-```bash
-
-# 20% of records./dbbackup backup sample DATABASE_NAME [OPTIONS]
-
-./dbbackup backup sample mydb --sample-percent 20```
-
-
-
-# First 5000 records per table**Options:**
-
-./dbbackup backup sample mydb --sample-count 5000
-
-```- `--sample-strategy STRING` - Strategy: ratio, percent, count (default: ratio)
-
+- `--sample-strategy STRING` - Strategy: ratio, percent, count (default: ratio)
 - `--sample-value FLOAT` - Sample value based on strategy (default: 10)
+
+**Examples:**
+
+```bash
+# Keep 10% of all rows
+./dbbackup backup sample myapp_db --sample-strategy percent --sample-value 10
+
+# Keep 1 in 100 rows
+./dbbackup backup sample myapp_db --sample-strategy ratio --sample-value 100
+
+# Keep 5000 rows per table
+./dbbackup backup sample myapp_db --sample-strategy count --sample-value 5000
+```
 
 **Warning:** Sample backups may break referential integrity.
 
-**Examples:**
+### Restore Operations
 
-### Restore Commands
+#### Single Database Restore
+
+Restore database from backup file:
 
 ```bash
-
-#### restore single - Restore Single Database# Keep 10% of all rows
-
-./dbbackup backup sample myapp_db --sample-strategy percent --sample-value 10
-
-Restore database from backup archive.
-
-# Keep 1 in 100 rows
-
-```bash./dbbackup backup sample myapp_db --sample-strategy ratio --sample-value 100
-
-./dbbackup restore single <archive-file> [flags]
-
-```# Keep 5000 rows per table
-
-./dbbackup backup sample myapp_db --sample-strategy count --sample-value 5000
-
-Restore flags:```
-
-- `--target` - Target database name (defaults to original)
-
-- `--confirm` - Execute restore (required, dry-run by default)## Restore Operations
-
-- `--clean` - Drop and recreate target database
-
-- `--create` - Create database if not exists### Single Database Restore
-
-- `--dry-run` - Preview without executing
-
-- `--force` - Skip safety checksRestore database from backup file:
-
-- `--verbose` - Detailed progress
-
-- `--no-progress` - Disable progress indicators```bash
-
 ./dbbackup restore single BACKUP_FILE [OPTIONS]
+```
 
-Examples:```
-
-```bash
-
-# Preview restore**Options:**
-
-./dbbackup restore single mydb.dump.gz
+**Options:**
 
 - `--target STRING` - Target database name (required)
-
-# Restore to original database- `--create` - Create database if it doesn't exist
-
-./dbbackup restore single mydb.dump.gz --confirm- `--clean` - Drop and recreate database before restore
-
+- `--create` - Create database if it doesn't exist
+- `--clean` - Drop and recreate database before restore
 - `--jobs INT` - Parallel restore jobs (default: 4)
+- `--verbose` - Show detailed progress
+- `--no-progress` - Disable progress indicators
+- `--confirm` - Execute restore (required for safety, dry-run by default)
+- `--dry-run` - Preview without executing
+- `--force` - Skip safety checks
 
-# Restore to different database- `--verbose` - Show detailed progress
-
-./dbbackup restore single mydb.dump.gz --target mydb_test --confirm- `--no-progress` - Disable progress indicators
-
-
-
-# Clean target before restore**Examples:**
-
-./dbbackup restore single mydb.dump.gz --clean --confirm
+**Examples:**
 
 ```bash
-
-# Create if not exists# Basic restore
-
-./dbbackup restore single mydb.dump.gz --create --confirm./dbbackup restore single /backups/myapp_20250112.dump --target myapp_restored
-
-```
+# Basic restore
+./dbbackup restore single /backups/myapp_20250112.dump --target myapp_restored
 
 # Restore with database creation
-
-Supported formats:./dbbackup restore single backup.dump \
-
-- PostgreSQL: .dump, .dump.gz, .sql, .sql.gz  --target myapp_db \
-
-- MySQL: .sql, .sql.gz  --create \
-
+./dbbackup restore single backup.dump \
+  --target myapp_db \
+  --create \
   --jobs 8
 
-#### restore cluster - Restore Full Cluster
-
 # Clean restore (drops existing database)
-
-Restore all databases from cluster backup (PostgreSQL only)../dbbackup restore single backup.dump \
-
+./dbbackup restore single backup.dump \
   --target myapp_db \
-
-```bash  --clean \
-
-./dbbackup restore cluster <archive-file> [flags]  --verbose
-
-``````
-
-
-
-Restore flags:### Cluster Restore (PostgreSQL)
-
-- `--confirm` - Execute restore (required, dry-run by default)
-
-- `--dry-run` - Preview without executingRestore entire PostgreSQL cluster from archive:
-
-- `--force` - Skip safety checks
-
-- `--jobs` - Parallel decompression jobs (0 = auto)```bash
-
-- `--verbose` - Detailed progress./dbbackup restore cluster ARCHIVE_FILE [OPTIONS]
-
-- `--no-progress` - Disable progress indicators```
-
-
-
-Example:**Options:**
-
-```bash
-
-./dbbackup restore cluster cluster_backup_20240101.tar.gz --confirm- `--confirm` - Confirm and execute restore (required for safety)
-
-```- `--dry-run` - Show what would be done without executing
-
-- `--force` - Skip safety checks
-
-#### restore list - List Available Backups- `--jobs INT` - Parallel decompression jobs (default: auto)
-
-- `--verbose` - Show detailed progress
-
-```bash
-
-./dbbackup restore list**Examples:**
-
+  --clean \
+  --verbose
 ```
 
+Supported formats:
+- PostgreSQL: .dump, .dump.gz, .sql, .sql.gz
+- MySQL: .sql, .sql.gz
+
+#### Cluster Restore (PostgreSQL)
+
+Restore entire PostgreSQL cluster from archive:
+
 ```bash
+./dbbackup restore cluster ARCHIVE_FILE [OPTIONS]
+```
 
-Shows available backup archives in backup directory.# Standard cluster restore
+**Options:**
 
+- `--confirm` - Confirm and execute restore (required for safety)
+- `--dry-run` - Show what would be done without executing
+- `--force` - Skip safety checks
+- `--jobs INT` - Parallel decompression jobs (default: auto)
+- `--verbose` - Show detailed progress
+- `--no-progress` - Disable progress indicators
+
+**Examples:**
+
+```bash
+# Standard cluster restore
 sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz --confirm
 
-### System Commands
-
 # Dry-run to preview
+sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz --dry-run
 
-#### status - Connection Statussudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz --dry-run
-
-
-
-```bash# High-performance restore
-
-./dbbackup statussudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
-
-```  --confirm \
-
+# High-performance restore
+sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
+  --confirm \
   --jobs 16 \
-
-Tests database connection and displays current configuration.  --verbose
-
+  --verbose
 ```
-
-#### preflight - Pre-flight Checks
 
 **Safety Features:**
 
+- Archive integrity validation
+- Disk space checks (4x archive size recommended)
+- Automatic database cleanup detection (interactive mode)
+- Progress tracking with ETA estimation
+
+#### Restore List
+
+Show available backup archives in backup directory:
+
 ```bash
+./dbbackup restore list
+```
 
-./dbbackup preflight- Archive integrity validation
+### System Commands
 
-```- Disk space checks (4x archive size recommended)
-
-- Tool verification (psql, pg_restore, tar, gzip)
-
-Runs checks before backup/restore operations:- Automatic database cleanup detection (interactive mode)
-
-- Database connectivity- Progress tracking with ETA estimation
-
-- Required tools availability
-
-- Disk space## System Commands
-
-- Permissions
-
-### Status Check
-
-#### list - List Databases
+#### Status Check
 
 Check database connection and configuration:
 
 ```bash
-
-./dbbackup list```bash
-
-```./dbbackup status [OPTIONS]
-
+./dbbackup status [OPTIONS]
 ```
-
-Lists all available databases.
 
 Shows: Database type, host, port, user, connection status, available databases.
 
-#### cpu - CPU Information
+#### Preflight Checks
 
-### Preflight Checks
-
-```bash
-
-./dbbackup cpuRun pre-backup validation checks:
-
-```
+Run pre-backup validation checks:
 
 ```bash
-
-Shows CPU configuration and optimization recommendations../dbbackup preflight [OPTIONS]
-
+./dbbackup preflight [OPTIONS]
 ```
-
-#### verify - Verify Archive
 
 Verifies: Database connection, required tools, disk space, permissions.
 
-```bash
-
-./dbbackup verify <archive-file>### List Databases
-
-```
+#### List Databases
 
 List available databases:
 
-Validates backup archive integrity.
-
 ```bash
-
-## Authentication./dbbackup list [OPTIONS]
-
+./dbbackup list [OPTIONS]
 ```
 
-### PostgreSQL Peer Authentication (Linux)
+#### CPU Information
 
-### CPU Information
+Display CPU configuration and optimization settings:
 
-Run as postgres user:
-
-```bashDisplay CPU configuration and optimization settings:
-
-sudo -u postgres ./dbbackup backup cluster
-
-``````bash
-
+```bash
 ./dbbackup cpu
-
-### PostgreSQL Password Authentication```
-
-
-
-Option 1 - .pgpass file (recommended):Shows: CPU count, model, workload recommendation, suggested parallel jobs.
-
-```bash
-
-echo "localhost:5432:*:postgres:password" > ~/.pgpass### Version
-
-chmod 0600 ~/.pgpass
-
-./dbbackup backup single mydb --user postgresDisplay version information:
-
 ```
 
+Shows: CPU count, model, workload recommendation, suggested parallel jobs.
+
+#### Version
+
+Display version information:
+
 ```bash
-
-Option 2 - Environment variable:./dbbackup version
-
-```bash```
-
-export PGPASSWORD=password
-
-./dbbackup backup single mydb --user postgres## Configuration
-
+./dbbackup version
 ```
+
+## Configuration
 
 ### PostgreSQL Authentication
 
-Option 3 - Command line:
+PostgreSQL uses different authentication methods based on system configuration.
 
-```bashPostgreSQL uses different authentication methods based on system configuration.
+**Peer/Ident Authentication (Linux Default)**
 
-./dbbackup backup single mydb --user postgres --password password
-
-```#### Peer/Ident Authentication (Linux Default)
-
-
-
-### MySQL/MariaDB AuthenticationRun as postgres system user:
-
-
-
-Option 1 - .my.cnf file:```bash
-
-```bashsudo -u postgres ./dbbackup backup cluster
-
-cat > ~/.my.cnf << EOF```
-
-[client]
-
-user=backup_user#### Password Authentication
-
-password=password
-
-host=localhost**Option 1: .pgpass file (recommended for automation)**
-
-EOF
-
-chmod 0600 ~/.my.cnf```bash
-
-./dbbackup backup single mydb --db-type mysqlecho "localhost:5432:*:postgres:password" > ~/.pgpass
-
-```chmod 0600 ~/.pgpass
-
-./dbbackup backup single mydb --user postgres
-
-Option 2 - Environment variable:```
+Run as postgres system user:
 
 ```bash
-
-export MYSQL_PWD=password**Option 2: Environment variable**
-
-./dbbackup backup single mydb --db-type mysql --user root
-
-``````bash
-
-export PGPASSWORD=your_password
-
-Option 3 - Command line:./dbbackup backup single mydb --user postgres
-
-```bash```
-
-./dbbackup backup single mydb --db-type mysql --user root --password password
-
-```**Option 3: Command line flag**
-
-
-
-## Configuration```bash
-
-./dbbackup backup single mydb --user postgres --password your_password
-
-### Environment Variables```
-
-
-
-```bash### MySQL/MariaDB Authentication
-
-# Database connection
-
-PG_HOST=localhost**Option 1: Command line**
-
-PG_PORT=5432
-
-PG_USER=postgres```bash
-
-PGPASSWORD=password./dbbackup backup single mydb --db-type mysql --user root --password secret
-
-MYSQL_HOST=localhost```
-
-MYSQL_PORT=3306
-
-MYSQL_USER=root**Option 2: Environment variable**
-
-MYSQL_PWD=password
-
-```bash
-
-# Backup settingsexport MYSQL_PWD=your_password
-
-BACKUP_DIR=/var/backups/databases./dbbackup backup single mydb --db-type mysql --user root
-
-COMPRESS_LEVEL=6```
-
-CLUSTER_TIMEOUT_MIN=240
-
-```**Option 3: Configuration file**
-
-
-
-### Database Types```bash
-
-cat > ~/.my.cnf << EOF
-
-- `postgres` - PostgreSQL[client]
-
-- `mysql` - MySQLuser=backup_user
-
-- `mariadb` - MariaDBpassword=your_password
-
-host=localhost
-
-Select via:EOF
-
-- CLI: `-d postgres` or `--db-type postgres`chmod 0600 ~/.my.cnf
-
-- Interactive: Arrow keys to cycle through options```
-
-
-
-### Performance Options### Environment Variables
-
-
-
-#### Parallelism```bash
-
-# PostgreSQL
-
-```bashexport PG_HOST=localhost
-
-./dbbackup backup cluster --jobs 16 --dump-jobs 16export PG_PORT=5432
-
-```export PG_USER=postgres
-
-export PGPASSWORD=password
-
-- `--jobs` - Compression/decompression parallel jobs
-
-- `--dump-jobs` - Database dump parallel jobs# MySQL/MariaDB
-
-- `--max-cores` - Limit CPU cores (default: 16)export MYSQL_HOST=localhost
-
-export MYSQL_PORT=3306
-
-#### CPU Workloadexport MYSQL_USER=root
-
-export MYSQL_PWD=password
-
-```bash
-
-./dbbackup backup cluster --cpu-workload cpu-intensive# General
-
-```export BACKUP_DIR=/var/backups/databases
-
-export COMPRESS_LEVEL=6
-
-Options: `cpu-intensive`, `io-intensive`, `balanced` (default)export CLUSTER_TIMEOUT_MIN=240
-
+sudo -u postgres ./dbbackup backup cluster
 ```
 
-#### Compression
+**Password Authentication**
+
+Option 1: .pgpass file (recommended for automation):
+
+```bash
+echo "localhost:5432:*:postgres:password" > ~/.pgpass
+chmod 0600 ~/.pgpass
+./dbbackup backup single mydb --user postgres
+```
+
+Option 2: Environment variable:
+
+```bash
+export PGPASSWORD=your_password
+./dbbackup backup single mydb --user postgres
+```
+
+Option 3: Command line flag:
+
+```bash
+./dbbackup backup single mydb --user postgres --password your_password
+```
+
+### MySQL/MariaDB Authentication
+
+**Option 1: Command line**
+
+```bash
+./dbbackup backup single mydb --db-type mysql --user root --password secret
+```
+
+**Option 2: Environment variable**
+
+```bash
+export MYSQL_PWD=your_password
+./dbbackup backup single mydb --db-type mysql --user root
+```
+
+**Option 3: Configuration file**
+
+```bash
+cat > ~/.my.cnf << EOF
+[client]
+user=backup_user
+password=your_password
+host=localhost
+EOF
+chmod 0600 ~/.my.cnf
+```
+
+### Environment Variables
+
+PostgreSQL:
+
+```bash
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_USER=postgres
+export PGPASSWORD=password
+```
+
+MySQL/MariaDB:
+
+```bash
+export MYSQL_HOST=localhost
+export MYSQL_PORT=3306
+export MYSQL_USER=root
+export MYSQL_PWD=password
+```
+
+General:
+
+```bash
+export BACKUP_DIR=/var/backups/databases
+export COMPRESS_LEVEL=6
+export CLUSTER_TIMEOUT_MIN=240
+```
+
+### Database Types
+
+- `postgres` - PostgreSQL
+- `mysql` - MySQL
+- `mariadb` - MariaDB
+
+Select via:
+- CLI: `-d postgres` or `--db-type postgres`
+- Interactive: Arrow keys to cycle through options
+
+## Performance
+
+### Memory Usage
+
+Streaming architecture maintains constant memory usage:
+
+| Database Size | Memory Usage |
+|---------------|--------------|
+| 1-10 GB      | ~800 MB      |
+| 10-50 GB     | ~900 MB      |
+| 50-100 GB    | ~950 MB      |
+| 100+ GB      | <1 GB        |
+
+### Large Database Optimization
+
+- Databases >5GB automatically use plain format with streaming compression
+- Parallel compression via pigz (if available)
+- Per-database timeout: 4 hours default
+- Automatic format selection based on size
+
+### CPU Optimization
+
+Automatically detects CPU configuration and optimizes parallelism:
+
+```bash
+./dbbackup cpu
+```
+
+Manual override:
+
+```bash
+./dbbackup backup cluster \
+  --max-cores 32 \
+  --jobs 32 \
+  --cpu-workload cpu-intensive
+```
+
+### Parallelism
+
+```bash
+./dbbackup backup cluster --jobs 16 --dump-jobs 16
+```
+
+- `--jobs` - Compression/decompression parallel jobs
+- `--dump-jobs` - Database dump parallel jobs
+- `--max-cores` - Limit CPU cores (default: 16)
+
+### CPU Workload
+
+```bash
+./dbbackup backup cluster --cpu-workload cpu-intensive
+```
+
+Options: `cpu-intensive`, `io-intensive`, `balanced` (default)
+
+### Compression
+
+```bash
+./dbbackup backup single mydb --compression 9
+```
+
+- Level 0 = No compression (fastest)
+- Level 6 = Balanced (default)
+- Level 9 = Maximum compression (slowest)
 
 ### SSL/TLS Configuration
 
-```bash
-
-./dbbackup backup single mydb --compression 9SSL modes: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`
-
-```
+SSL modes: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`
 
 ```bash
-
-- Level 0 = No compression (fastest)# Disable SSL
-
-- Level 6 = Balanced (default)./dbbackup backup single mydb --insecure
-
-- Level 9 = Maximum compression (slowest)
+# Disable SSL
+./dbbackup backup single mydb --insecure
 
 # Require SSL
+./dbbackup backup single mydb --ssl-mode require
 
-## Disaster Recovery./dbbackup backup single mydb --ssl-mode require
-
-
-
-Complete automated disaster recovery test:# Verify certificate
-
+# Verify certificate
 ./dbbackup backup single mydb --ssl-mode verify-full
-
-```bash```
-
-sudo ./disaster_recovery_test.sh
-
-```## Performance
-
-
-
-This script:### Memory Usage
-
-1. Backs up entire cluster with maximum performance
-
-2. Documents pre-backup stateStreaming architecture maintains constant memory usage:
-
-3. Destroys all user databases (confirmation required)
-
-4. Restores full cluster from backup| Database Size | Memory Usage |
-
-5. Verifies restoration success|---------------|--------------|
-
-| 1-10 GB      | ~800 MB      |
-
-**Warning:** Destructive operation. Use only in test environments.| 10-50 GB     | ~900 MB      |
-
-| 50-100 GB    | ~950 MB      |
-
-## Troubleshooting| 100+ GB      | <1 GB        |
-
-
-
-### Connection Issues### Large Database Optimization
-
-
-
-Test connection:- Databases >5GB automatically use plain format with streaming compression
-
-```bash- Parallel compression via pigz (if available)
-
-./dbbackup status- Per-database timeout: 4 hours default
-
-```- Automatic format selection based on size
-
-
-
-PostgreSQL authentication error:### CPU Optimization
-
-```bash
-
-sudo -u postgres ./dbbackup statusAutomatically detects CPU configuration and optimizes parallelism:
-
-```
-
-```bash
-
-SSL/TLS issues:./dbbackup cpu
-
-```bash```
-
-./dbbackup status --insecure
-
-```Manual override:
-
-
-
-### Out of Memory```bash
-
-./dbbackup backup cluster \
-
-Check swap:  --max-cores 32 \
-
-```bash  --jobs 32 \
-
-free -h  --cpu-workload cpu-intensive
-
-dmesg | grep -i oom```
-
 ```
 
 ## Disaster Recovery
 
-Add swap:
-
-```bashUse the included script for complete disaster recovery testing:
-
-sudo fallocate -l 16G /swapfile
-
-sudo chmod 600 /swapfile```bash
-
-sudo mkswap /swapfilesudo ./disaster_recovery_test.sh
-
-sudo swapon /swapfile```
-
-```
-
-**Process:**
-
-Reduce parallelism:
-
-```bash1. Full cluster backup with maximum performance
-
-./dbbackup backup cluster --jobs 4 --dump-jobs 42. Document current database state
-
-```3. Drop all user databases (with confirmation)
-
-4. Restore entire cluster from backup
-
-### Debug Mode5. Verify database integrity and counts
-
-
-
-Enable detailed logging:**Warning:** Destructive operation. Only use in test environments or genuine disaster recovery.
+Complete automated disaster recovery test:
 
 ```bash
-
-./dbbackup backup single mydb --debug## Troubleshooting
-
+sudo ./disaster_recovery_test.sh
 ```
+
+This script:
+
+1. Backs up entire cluster with maximum performance
+2. Documents pre-backup state
+3. Destroys all user databases (confirmation required)
+4. Restores full cluster from backup
+5. Verifies restoration success
+
+**Warning:** Destructive operation. Use only in test environments.
+
+## Troubleshooting
 
 ### Connection Issues
 
-## Why dbbackup?
-
 **Test connectivity:**
 
-- **Reliable**: Comprehensive safety checks, validation, and error handling
-
-- **Simple**: Intuitive menu-driven interface or straightforward CLI```bash
-
-- **Fast**: Automatic CPU detection, parallel processing, streaming compression./dbbackup status
-
-- **Efficient**: Minimal memory footprint, even for huge databases```
-
-- **Flexible**: Multiple backup modes, compression levels, performance options
-
-- **Safe**: Dry-run by default, archive verification, smart database cleanup**PostgreSQL peer authentication error:**
-
-- **Complete**: Full cluster backup/restore, point-in-time recovery, multiple formats
-
 ```bash
-
-dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases of any size.sudo -u postgres ./dbbackup status
-
+./dbbackup status
 ```
 
-## License
+**PostgreSQL peer authentication error:**
+
+```bash
+sudo -u postgres ./dbbackup status
+```
 
 **SSL/TLS issues:**
 
-MIT
-
 ```bash
-
-## Repository./dbbackup status --insecure
-
+./dbbackup status --insecure
 ```
-
-https://git.uuxo.net/uuxo/dbbackup
 
 ### Out of Memory
 
@@ -1076,3 +715,15 @@ dbbackup/
 ## License
 
 MIT License
+
+## Why dbbackup?
+
+- **Reliable** - Comprehensive safety checks, validation, and error handling
+- **Simple** - Intuitive menu-driven interface or straightforward CLI
+- **Fast** - Automatic CPU detection, parallel processing, streaming compression
+- **Efficient** - Minimal memory footprint, even for huge databases
+- **Flexible** - Multiple backup modes, compression levels, performance options
+- **Safe** - Dry-run by default, archive verification, smart database cleanup
+- **Complete** - Full cluster backup/restore, multiple formats
+
+dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases of any size.
