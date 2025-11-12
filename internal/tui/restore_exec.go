@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -115,19 +116,11 @@ func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archiv
 		if restoreType == "restore-cluster" && cleanClusterFirst && len(existingDBs) > 0 {
 			log.Info("Dropping existing user databases before cluster restore", "count", len(existingDBs))
 			
-			// Connect to database for cleanup
-			if err := dbClient.Connect(ctx); err != nil {
-				return restoreCompleteMsg{
-					result:  "",
-					err:     fmt.Errorf("failed to connect for cleanup: %w", err),
-					elapsed: time.Since(start),
-				}
-			}
-			
-			// Drop each database
+			// Drop databases using command-line psql (no connection required)
+			// This matches how cluster restore works - uses CLI tools, not database connections
 			droppedCount := 0
 			for _, dbName := range existingDBs {
-				if err := dbClient.DropDatabase(ctx, dbName); err != nil {
+				if err := dropDatabaseCLI(ctx, cfg, dbName); err != nil {
 					log.Warn("Failed to drop database", "name", dbName, "error", err)
 					// Continue with other databases
 				} else {
@@ -318,3 +311,34 @@ func formatDuration(d time.Duration) string {
 	minutes := int(d.Minutes()) % 60
 	return fmt.Sprintf("%dh %dm", hours, minutes)
 }
+
+// dropDatabaseCLI drops a database using command-line psql
+// This avoids needing an active database connection
+func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) error {
+	args := []string{
+		"-p", fmt.Sprintf("%d", cfg.Port),
+		"-U", cfg.User,
+		"-d", "postgres", // Connect to postgres maintenance DB
+		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName),
+	}
+	
+	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
+	if cfg.Host != "localhost" && cfg.Host != "127.0.0.1" && cfg.Host != "" {
+		args = append([]string{"-h", cfg.Host}, args...)
+	}
+	
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	
+	// Set password if provided
+	if cfg.Password != "" {
+		cmd.Env = append(cmd.Environ(), fmt.Sprintf("PGPASSWORD=%s", cfg.Password))
+	}
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to drop database %s: %w\nOutput: %s", dbName, err, string(output))
+	}
+	
+	return nil
+}
+
