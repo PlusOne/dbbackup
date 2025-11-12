@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"dbbackup/internal/config"
@@ -489,8 +491,6 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		return fmt.Errorf("failed to read dumps directory: %w", err)
 	}
 
-	successCount := 0
-	failCount := 0
 	var failedDBs []string
 	totalDBs := 0
 	
@@ -505,77 +505,110 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	estimator := progress.NewETAEstimator("Restoring cluster", totalDBs)
 	e.progress.SetEstimator(estimator)
 
-	for i, entry := range entries {
+	// Use worker pool for parallel restore
+	parallelism := e.cfg.ClusterParallelism
+	if parallelism < 1 {
+		parallelism = 1 // Ensure at least sequential
+	}
+	
+	var successCount, failCount int32
+	var failedDBsMu sync.Mutex
+	var mu sync.Mutex // Protect shared resources (progress, logger)
+	
+	// Create semaphore to limit concurrency
+	semaphore := make(chan struct{}, parallelism)
+	var wg sync.WaitGroup
+	
+	dbIndex := 0
+	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 		
-		// Update estimator progress
-		estimator.UpdateProgress(i)
-
-		dumpFile := filepath.Join(dumpsDir, entry.Name())
-		// Strip file extensions to get database name (.dump or .sql.gz)
-		dbName := entry.Name()
-		dbName = strings.TrimSuffix(dbName, ".dump")
-		dbName = strings.TrimSuffix(dbName, ".sql.gz")
-
-		// Calculate progress percentage for logging
-		dbProgress := 15 + int(float64(i)/float64(totalDBs)*85.0)
+		wg.Add(1)
+		semaphore <- struct{}{} // Acquire
 		
-		statusMsg := fmt.Sprintf("Restoring database %s (%d/%d)", dbName, i+1, totalDBs)
-		e.progress.Update(statusMsg)
-		e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
+		go func(idx int, filename string) {
+			defer wg.Done()
+			defer func() { <-semaphore }() // Release
+			
+			// Update estimator progress (thread-safe)
+			mu.Lock()
+			estimator.UpdateProgress(idx)
+			mu.Unlock()
 
-		// STEP 1: Drop existing database completely (clean slate)
-		e.log.Info("Dropping existing database for clean restore", "name", dbName)
-		if err := e.dropDatabaseIfExists(ctx, dbName); err != nil {
-			e.log.Warn("Could not drop existing database", "name", dbName, "error", err)
-			// Continue anyway - database might not exist
-		}
+			dumpFile := filepath.Join(dumpsDir, filename)
+			dbName := filename
+			dbName = strings.TrimSuffix(dbName, ".dump")
+			dbName = strings.TrimSuffix(dbName, ".sql.gz")
 
-		// STEP 2: Create fresh database (pg_restore will handle ownership if we have privileges)
-		if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
-			e.log.Error("Failed to create database", "name", dbName, "error", err)
-			failedDBs = append(failedDBs, fmt.Sprintf("%s: failed to create database: %v", dbName, err))
-			failCount++
-			continue
-		}
+			dbProgress := 15 + int(float64(idx)/float64(totalDBs)*85.0)
+			
+			mu.Lock()
+			statusMsg := fmt.Sprintf("Restoring database %s (%d/%d)", dbName, idx+1, totalDBs)
+			e.progress.Update(statusMsg)
+			e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
+			mu.Unlock()
 
-		// STEP 3: Restore with ownership preservation if superuser
-		// Detect if this is a .sql.gz file (plain SQL) or .dump file (custom format)
-		preserveOwnership := isSuperuser
-		isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
+			// STEP 1: Drop existing database completely (clean slate)
+			e.log.Info("Dropping existing database for clean restore", "name", dbName)
+			if err := e.dropDatabaseIfExists(ctx, dbName); err != nil {
+				e.log.Warn("Could not drop existing database", "name", dbName, "error", err)
+			}
+
+			// STEP 2: Create fresh database
+			if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
+				e.log.Error("Failed to create database", "name", dbName, "error", err)
+				failedDBsMu.Lock()
+				failedDBs = append(failedDBs, fmt.Sprintf("%s: failed to create database: %v", dbName, err))
+				failedDBsMu.Unlock()
+				atomic.AddInt32(&failCount, 1)
+				return
+			}
+
+			// STEP 3: Restore with ownership preservation if superuser
+			preserveOwnership := isSuperuser
+			isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
+			
+			var restoreErr error
+			if isCompressedSQL {
+				e.log.Info("Detected compressed SQL format, using psql + gunzip", "file", dumpFile)
+				restoreErr = e.restorePostgreSQLSQL(ctx, dumpFile, dbName, true)
+			} else {
+				e.log.Info("Detected custom dump format, using pg_restore", "file", dumpFile)
+				restoreErr = e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership)
+			}
+			
+			if restoreErr != nil {
+				e.log.Error("Failed to restore database", "name", dbName, "error", restoreErr)
+				failedDBsMu.Lock()
+				failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, restoreErr))
+				failedDBsMu.Unlock()
+				atomic.AddInt32(&failCount, 1)
+				return
+			}
+
+			atomic.AddInt32(&successCount, 1)
+		}(dbIndex, entry.Name())
 		
-		var restoreErr error
-		if isCompressedSQL {
-			// Plain SQL compressed - use psql with gunzip
-			e.log.Info("Detected compressed SQL format, using psql + gunzip", "file", dumpFile)
-			restoreErr = e.restorePostgreSQLSQL(ctx, dumpFile, dbName, true)
-		} else {
-			// Custom format - use pg_restore
-			e.log.Info("Detected custom dump format, using pg_restore", "file", dumpFile)
-			restoreErr = e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership)
-		}
-		
-		if restoreErr != nil {
-			e.log.Error("Failed to restore database", "name", dbName, "error", restoreErr)
-			failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, restoreErr))
-			failCount++
-			continue
-		}
-
-		successCount++
+		dbIndex++
 	}
+	
+	// Wait for all restores to complete
+	wg.Wait()
+	
+	successCountFinal := int(atomic.LoadInt32(&successCount))
+	failCountFinal := int(atomic.LoadInt32(&failCount))
 
-	if failCount > 0 {
+	if failCountFinal > 0 {
 		failedList := strings.Join(failedDBs, "; ")
-		e.progress.Fail(fmt.Sprintf("Cluster restore completed with errors: %d succeeded, %d failed", successCount, failCount))
-		operation.Complete(fmt.Sprintf("Partial restore: %d succeeded, %d failed", successCount, failCount))
-		return fmt.Errorf("cluster restore completed with %d failures: %s", failCount, failedList)
+		e.progress.Fail(fmt.Sprintf("Cluster restore completed with errors: %d succeeded, %d failed", successCountFinal, failCountFinal))
+		operation.Complete(fmt.Sprintf("Partial restore: %d succeeded, %d failed", successCountFinal, failCountFinal))
+		return fmt.Errorf("cluster restore completed with %d failures: %s", failCountFinal, failedList)
 	}
 
-	e.progress.Complete(fmt.Sprintf("Cluster restored successfully: %d databases", successCount))
-	operation.Complete(fmt.Sprintf("Restored %d databases from cluster archive", successCount))
+	e.progress.Complete(fmt.Sprintf("Cluster restored successfully: %d databases", successCountFinal))
+	operation.Complete(fmt.Sprintf("Restored %d databases from cluster archive", successCountFinal))
 	return nil
 }
 

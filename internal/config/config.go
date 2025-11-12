@@ -57,6 +57,9 @@ type Config struct {
 	// Timeouts (in minutes)
 	ClusterTimeoutMinutes int
 
+	// Cluster parallelism
+	ClusterParallelism int // Number of concurrent databases during cluster operations (0 = sequential)
+
 	// Swap file management (for large backups)
 	SwapFilePath   string // Path to temporary swap file
 	SwapFileSizeGB int    // Size in GB (0 = disabled)
@@ -143,6 +146,9 @@ func New() *Config {
 
 		// Timeouts
 		ClusterTimeoutMinutes: getEnvInt("CLUSTER_TIMEOUT_MIN", 240),
+
+		// Cluster parallelism (default: 2 concurrent operations for faster cluster backup/restore)
+		ClusterParallelism: getEnvInt("CLUSTER_PARALLELISM", 2),
 
 		// Swap file management
 		SwapFilePath:   getEnvString("SWAP_FILE_PATH", "/tmp/dbbackup_swap"),

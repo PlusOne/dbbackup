@@ -45,13 +45,16 @@ func (s *Spinner) Start(message string) {
 	s.active = true
 	
 	go func() {
+		ticker := time.NewTicker(s.interval)
+		defer ticker.Stop()
+		
 		i := 0
 		lastMessage := ""
 		for {
 			select {
 			case <-s.stopCh:
 				return
-			default:
+			case <-ticker.C:
 				if s.active {
 					displayMsg := s.message
 					
@@ -70,7 +73,6 @@ func (s *Spinner) Start(message string) {
 						fmt.Fprintf(s.writer, "\r%s", currentFrame)
 					}
 					i++
-					time.Sleep(s.interval)
 				}
 			}
 		}
@@ -132,12 +134,15 @@ func (d *Dots) Start(message string) {
 	fmt.Fprint(d.writer, message)
 	
 	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		
 		count := 0
 		for {
 			select {
 			case <-d.stopCh:
 				return
-			default:
+			case <-ticker.C:
 				if d.active {
 					fmt.Fprint(d.writer, ".")
 					count++
@@ -145,7 +150,6 @@ func (d *Dots) Start(message string) {
 						// Reset dots
 						fmt.Fprint(d.writer, "\r"+d.message)
 					}
-					time.Sleep(500 * time.Millisecond)
 				}
 			}
 		}

@@ -262,6 +262,8 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan) // Ensure signal cleanup on exit
+	
 	go func() {
 		<-sigChan
 		log.Warn("Restore interrupted by user")
@@ -356,6 +358,8 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan) // Ensure signal cleanup on exit
+	
 	go func() {
 		<-sigChan
 		log.Warn("Restore interrupted by user")

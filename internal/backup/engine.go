@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"dbbackup/internal/config"
@@ -338,90 +340,115 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	quietProgress.SetEstimator(estimator)
 	
 	// Backup each database
-	e.printf("   Backing up %d databases...\n", len(databases))
-	successCount := 0
-	failCount := 0
-	
-	for i, dbName := range databases {
-		// Update estimator progress
-		estimator.UpdateProgress(i)
-		
-		e.printf("   [%d/%d] Backing up database: %s\n", i+1, len(databases), dbName)
-		quietProgress.Update(fmt.Sprintf("Backing up database %d/%d: %s", i+1, len(databases), dbName))
-		
-		// Check database size and warn if very large
-		if size, err := e.db.GetDatabaseSize(ctx, dbName); err == nil {
-			sizeStr := formatBytes(size)
-			e.printf("       Database size: %s\n", sizeStr)
-			if size > 10*1024*1024*1024 { // > 10GB
-				e.printf("       ⚠️  Large database detected - this may take a while\n")
-			}
-		}
-		
-		dumpFile := filepath.Join(tempDir, "dumps", dbName+".dump")
-		
-		// For cluster backups, use settings optimized for large databases:
-		// - Lower compression (faster, less memory)
-		// - Use parallel dumps if configured
-		// - Smart format selection based on size
-		
-		compressionLevel := e.cfg.CompressionLevel
-		if compressionLevel > 6 {
-			compressionLevel = 6 // Cap at 6 for cluster backups to reduce memory
-		}
-		
-		// Determine optimal format based on database size
-		format := "custom"
-		parallel := e.cfg.DumpJobs
-		
-		// For large databases (>5GB), use plain format with external compression
-		// This avoids pg_dump's custom format memory overhead
-		if size, err := e.db.GetDatabaseSize(ctx, dbName); err == nil {
-			if size > 5*1024*1024*1024 { // > 5GB
-				format = "plain"        // Plain SQL format
-				compressionLevel = 0    // Disable pg_dump compression
-				parallel = 0            // Plain format doesn't support parallel
-				e.printf("       Using plain format + external compression (optimal for large DBs)\n")
-			}
-		}
-		
-		options := database.BackupOptions{
-			Compression:  compressionLevel,
-			Parallel:     parallel,
-			Format:       format,
-			Blobs:        true,
-			NoOwner:      false,
-			NoPrivileges: false,
-		}
-		
-		cmd := e.db.BuildBackupCommand(dbName, dumpFile, options)
-		
-		// Use a context with timeout for each database to prevent hangs
-		// Use longer timeout for huge databases (2 hours per database)
-		dbCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
-		defer cancel() // Ensure cancel is called even if executeCommand panics
-		err := e.executeCommand(dbCtx, cmd, dumpFile)
-		cancel() // Also call immediately for early cleanup
-		
-		if err != nil {
-			e.log.Warn("Failed to backup database", "database", dbName, "error", err)
-			e.printf("   ⚠️  WARNING: Failed to backup %s: %v\n", dbName, err)
-			failCount++
-			// Continue with other databases
-		} else {
-			// If streaming compression was used the compressed file may have a different name
-			// (e.g. .sql.gz). Prefer compressed file size when present, fall back to dumpFile.
-			compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql.gz"
-			if info, err := os.Stat(compressedCandidate); err == nil {
-				e.printf("   ✅ Completed %s (%s)\n", dbName, formatBytes(info.Size()))
-			} else if info, err := os.Stat(dumpFile); err == nil {
-				e.printf("   ✅ Completed %s (%s)\n", dbName, formatBytes(info.Size()))
-			}
-			successCount++
-		}
+	parallelism := e.cfg.ClusterParallelism
+	if parallelism < 1 {
+		parallelism = 1 // Ensure at least sequential
 	}
 	
-	e.printf("   Backup summary: %d succeeded, %d failed\n", successCount, failCount)
+	if parallelism == 1 {
+		e.printf("   Backing up %d databases sequentially...\n", len(databases))
+	} else {
+		e.printf("   Backing up %d databases with %d parallel workers...\n", len(databases), parallelism)
+	}
+	
+	// Use worker pool for parallel backup
+	var successCount, failCount int32
+	var mu sync.Mutex // Protect shared resources (printf, estimator)
+	
+	// Create semaphore to limit concurrency
+	semaphore := make(chan struct{}, parallelism)
+	var wg sync.WaitGroup
+	
+	for i, dbName := range databases {
+		wg.Add(1)
+		semaphore <- struct{}{} // Acquire
+		
+		go func(idx int, name string) {
+			defer wg.Done()
+			defer func() { <-semaphore }() // Release
+			
+			// Update estimator progress (thread-safe)
+			mu.Lock()
+			estimator.UpdateProgress(idx)
+			e.printf("   [%d/%d] Backing up database: %s\n", idx+1, len(databases), name)
+			quietProgress.Update(fmt.Sprintf("Backing up database %d/%d: %s", idx+1, len(databases), name))
+			mu.Unlock()
+			
+			// Check database size and warn if very large
+			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
+				sizeStr := formatBytes(size)
+				mu.Lock()
+				e.printf("       Database size: %s\n", sizeStr)
+				if size > 10*1024*1024*1024 { // > 10GB
+					e.printf("       ⚠️  Large database detected - this may take a while\n")
+				}
+				mu.Unlock()
+			}
+			
+			dumpFile := filepath.Join(tempDir, "dumps", name+".dump")
+			
+			compressionLevel := e.cfg.CompressionLevel
+			if compressionLevel > 6 {
+				compressionLevel = 6
+			}
+			
+			format := "custom"
+			parallel := e.cfg.DumpJobs
+			
+			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
+				if size > 5*1024*1024*1024 {
+					format = "plain"
+					compressionLevel = 0
+					parallel = 0
+					mu.Lock()
+					e.printf("       Using plain format + external compression (optimal for large DBs)\n")
+					mu.Unlock()
+				}
+			}
+			
+			options := database.BackupOptions{
+				Compression:  compressionLevel,
+				Parallel:     parallel,
+				Format:       format,
+				Blobs:        true,
+				NoOwner:      false,
+				NoPrivileges: false,
+			}
+			
+			cmd := e.db.BuildBackupCommand(name, dumpFile, options)
+			
+			dbCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+			defer cancel()
+			err := e.executeCommand(dbCtx, cmd, dumpFile)
+			cancel()
+			
+			if err != nil {
+				e.log.Warn("Failed to backup database", "database", name, "error", err)
+				mu.Lock()
+				e.printf("   ⚠️  WARNING: Failed to backup %s: %v\n", name, err)
+				mu.Unlock()
+				atomic.AddInt32(&failCount, 1)
+			} else {
+				compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql.gz"
+				mu.Lock()
+				if info, err := os.Stat(compressedCandidate); err == nil {
+					e.printf("   ✅ Completed %s (%s)\n", name, formatBytes(info.Size()))
+				} else if info, err := os.Stat(dumpFile); err == nil {
+					e.printf("   ✅ Completed %s (%s)\n", name, formatBytes(info.Size()))
+				}
+				mu.Unlock()
+				atomic.AddInt32(&successCount, 1)
+			}
+		}(i, dbName)
+	}
+	
+	// Wait for all backups to complete
+	wg.Wait()
+	
+	successCountFinal := int(atomic.LoadInt32(&successCount))
+	failCountFinal := int(atomic.LoadInt32(&failCount))
+	
+	e.printf("   Backup summary: %d succeeded, %d failed\n", successCountFinal, failCountFinal)
 	
 	// Create archive
 	e.printf("   Creating compressed archive...\n")
