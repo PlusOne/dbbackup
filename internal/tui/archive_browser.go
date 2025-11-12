@@ -359,16 +359,30 @@ func (m ArchiveBrowserModel) filterArchives(archives []ArchiveInfo) []ArchiveInf
 	return filtered
 }
 
+// stripFileExtensions removes common backup file extensions from a name
+func stripFileExtensions(name string) string {
+	// Remove extensions (handle double extensions like .sql.gz.sql.gz)
+	for {
+		oldName := name
+		name = strings.TrimSuffix(name, ".tar.gz")
+		name = strings.TrimSuffix(name, ".dump.gz")
+		name = strings.TrimSuffix(name, ".sql.gz")
+		name = strings.TrimSuffix(name, ".dump")
+		name = strings.TrimSuffix(name, ".sql")
+		// If no change, we're done
+		if name == oldName {
+			break
+		}
+	}
+	return name
+}
+
 // extractDBNameFromFilename extracts database name from archive filename
 func extractDBNameFromFilename(filename string) string {
 	base := filepath.Base(filename)
 
 	// Remove extensions
-	base = strings.TrimSuffix(base, ".tar.gz")
-	base = strings.TrimSuffix(base, ".dump.gz")
-	base = strings.TrimSuffix(base, ".sql.gz")
-	base = strings.TrimSuffix(base, ".dump")
-	base = strings.TrimSuffix(base, ".sql")
+	base = stripFileExtensions(base)
 
 	// Remove timestamp patterns (YYYYMMDD_HHMMSS)
 	parts := strings.Split(base, "_")
