@@ -175,6 +175,43 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.done {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(m.spinnerFrames)
 			m.elapsed = time.Since(m.startTime)
+			
+			// Update status based on elapsed time to show progress
+			// This provides visual feedback even though we don't have real-time progress
+			elapsedSec := int(m.elapsed.Seconds())
+			
+			if elapsedSec < 2 {
+				m.status = "Initializing restore..."
+				m.phase = "Starting"
+			} else if elapsedSec < 5 {
+				if m.cleanClusterFirst && len(m.existingDBs) > 0 {
+					m.status = fmt.Sprintf("Cleaning %d existing database(s)...", len(m.existingDBs))
+					m.phase = "Cleanup"
+				} else if m.restoreType == "restore-cluster" {
+					m.status = "Extracting cluster archive..."
+					m.phase = "Extraction"
+				} else {
+					m.status = "Preparing restore..."
+					m.phase = "Preparation"
+				}
+			} else if elapsedSec < 10 {
+				if m.restoreType == "restore-cluster" {
+					m.status = "Restoring global objects..."
+					m.phase = "Globals"
+				} else {
+					m.status = fmt.Sprintf("Restoring database '%s'...", m.targetDB)
+					m.phase = "Restore"
+				}
+			} else {
+				if m.restoreType == "restore-cluster" {
+					m.status = "Restoring cluster databases..."
+					m.phase = "Restore"
+				} else {
+					m.status = fmt.Sprintf("Restoring database '%s'...", m.targetDB)
+					m.phase = "Restore"
+				}
+			}
+			
 			return m, restoreTickCmd()
 		}
 		return m, nil
@@ -199,7 +236,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.elapsed = msg.elapsed
 		
 		if m.err == nil {
-			m.status = "Completed"
+			m.status = "Restore completed successfully"
 			m.phase = "Done"
 			m.progress = 100
 		} else {
