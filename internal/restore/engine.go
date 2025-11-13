@@ -795,6 +795,11 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 
 // ensureDatabaseExists checks if a database exists and creates it if not
 func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error {
+	// Skip creation for postgres and template databases - they should already exist
+	if dbName == "postgres" || dbName == "template0" || dbName == "template1" {
+		e.log.Info("Skipping create for system database (assume exists)", "name", dbName)
+		return nil
+	}
 	// Build psql command with authentication
 	buildPsqlCmd := func(ctx context.Context, database, query string) *exec.Cmd {
 		args := []string{
