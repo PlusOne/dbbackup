@@ -378,8 +378,10 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	// Skip data restore if table creation fails (prevents duplicate data errors)
 	cmd = append(cmd, "--no-data-for-failed-tables")
 	
-	// Add verbose flag for better error reporting
-	cmd = append(cmd, "--verbose")
+	// Add verbose flag ONLY if requested (WARNING: can cause OOM on large cluster restores)
+	if options.Verbose {
+		cmd = append(cmd, "--verbose")
+	}
 	
 	// Database and input
 	cmd = append(cmd, "--dbname="+database)

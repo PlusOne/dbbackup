@@ -60,12 +60,13 @@ type BackupOptions struct {
 
 // RestoreOptions holds options for restore operations
 type RestoreOptions struct {
-	Parallel     int
-	Clean        bool
-	IfExists     bool
-	NoOwner      bool
-	NoPrivileges bool
+	Parallel          int
+	Clean             bool
+	IfExists          bool
+	NoOwner           bool
+	NoPrivileges      bool
 	SingleTransaction bool
+	Verbose           bool // Enable verbose output (caution: can cause OOM on large restores)
 }
 
 // SampleStrategy defines how to sample data

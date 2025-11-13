@@ -161,6 +161,7 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 		NoOwner:           true,
 		NoPrivileges:      true,
 		SingleTransaction: true,
+		Verbose:           true, // Enable verbose for single database restores (not cluster)
 	}
 
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, opts)
@@ -182,6 +183,7 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 		NoOwner:           !preserveOwnership, // Preserve ownership if we're superuser
 		NoPrivileges:      !preserveOwnership, // Preserve privileges if we're superuser
 		SingleTransaction: true,
+		Verbose:           false,              // CRITICAL: disable verbose to prevent OOM on large restores
 	}
 
 	e.log.Info("Restoring database",
@@ -287,17 +289,21 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 	// Read stderr in chunks to log errors without loading all into memory
 	buf := make([]byte, 4096)
 	var lastError string
-	var allErrors []string
+	var errorCount int
+	const maxErrors = 10 // Limit captured errors to prevent OOM
 	for {
 		n, err := stderr.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
-			// Capture all errors/warnings for better diagnostics
-			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") || strings.Contains(chunk, "error:") {
-				lastError = chunk
-				allErrors = append(allErrors, strings.TrimSpace(chunk))
-				e.log.Warn("Restore stderr", "output", chunk)
+			// Only capture REAL errors, not verbose output
+			if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
+				lastError = strings.TrimSpace(chunk)
+				errorCount++
+				if errorCount <= maxErrors {
+					e.log.Warn("Restore stderr", "output", chunk)
+				}
 			}
+			// Note: --verbose output is discarded to prevent OOM
 		}
 		if err != nil {
 			break
@@ -305,14 +311,9 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 	}
 
 	if err := cmd.Wait(); err != nil {
-		// Include all captured errors in the return message for better diagnostics
-		errorDetails := lastError
-		if len(allErrors) > 0 {
-			errorDetails = strings.Join(allErrors, " | ")
-		}
-		e.log.Error("Restore command failed", "error", err, "stderr", errorDetails)
-		if errorDetails != "" {
-			return fmt.Errorf("restore failed: %w (stderr: %s)", err, errorDetails)
+		e.log.Error("Restore command failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
+		if lastError != "" {
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d)", err, lastError, errorCount)
 		}
 		return fmt.Errorf("restore failed: %w", err)
 	}
@@ -352,17 +353,21 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	// Read stderr in chunks to log errors without loading all into memory
 	buf := make([]byte, 4096)
 	var lastError string
-	var allErrors []string
+	var errorCount int
+	const maxErrors = 10 // Limit captured errors to prevent OOM
 	for {
 		n, err := stderr.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
-			// Capture all errors/warnings for better diagnostics
-			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") || strings.Contains(chunk, "error:") {
-				lastError = chunk
-				allErrors = append(allErrors, strings.TrimSpace(chunk))
-				e.log.Warn("Restore stderr", "output", chunk)
+			// Only capture REAL errors, not verbose output
+			if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
+				lastError = strings.TrimSpace(chunk)
+				errorCount++
+				if errorCount <= maxErrors {
+					e.log.Warn("Restore stderr", "output", chunk)
+				}
 			}
+			// Note: --verbose output is discarded to prevent OOM
 		}
 		if err != nil {
 			break
@@ -370,14 +375,9 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	}
 
 	if err := cmd.Wait(); err != nil {
-		// Include all captured errors in the return message for better diagnostics
-		errorDetails := lastError
-		if len(allErrors) > 0 {
-			errorDetails = strings.Join(allErrors, " | ")
-		}
-		e.log.Error("Restore with decompression failed", "error", err, "stderr", errorDetails)
-		if errorDetails != "" {
-			return fmt.Errorf("restore failed: %w (stderr: %s)", err, errorDetails)
+		e.log.Error("Restore with decompression failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
+		if lastError != "" {
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d)", err, lastError, errorCount)
 		}
 		return fmt.Errorf("restore failed: %w", err)
 	}
