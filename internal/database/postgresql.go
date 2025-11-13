@@ -349,8 +349,8 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	}
 	cmd = append(cmd, "-U", p.cfg.User)
 	
-	// Parallel jobs
-	if options.Parallel > 1 {
+	// Parallel jobs (incompatible with --single-transaction per PostgreSQL docs)
+	if options.Parallel > 1 && !options.SingleTransaction {
 		cmd = append(cmd, "--jobs="+strconv.Itoa(options.Parallel))
 	}
 	
@@ -370,6 +370,13 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	if options.SingleTransaction {
 		cmd = append(cmd, "--single-transaction")
 	}
+	
+	// CRITICAL: Exit on first error (by default pg_restore continues on errors)
+	// This ensures we catch failures immediately instead of at the end
+	cmd = append(cmd, "--exit-on-error")
+	
+	// Skip data restore if table creation fails (prevents duplicate data errors)
+	cmd = append(cmd, "--no-data-for-failed-tables")
 	
 	// Add verbose flag for better error reporting
 	cmd = append(cmd, "--verbose")

@@ -865,13 +865,15 @@ func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error 
 	}
 
 	// Database doesn't exist, create it
-	e.log.Info("Creating database", "name", dbName)
+	// IMPORTANT: Use template0 to avoid duplicate definition errors from local additions to template1
+	// See PostgreSQL docs: https://www.postgresql.org/docs/current/app-pgrestore.html#APP-PGRESTORE-NOTES
+	e.log.Info("Creating database from template0", "name", dbName)
 
 	createArgs := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
-		"-c", fmt.Sprintf("CREATE DATABASE \"%s\"", dbName),
+		"-c", fmt.Sprintf("CREATE DATABASE \"%s\" WITH TEMPLATE template0", dbName),
 	}
 
 	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
@@ -891,7 +893,7 @@ func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error 
 		return fmt.Errorf("failed to create database '%s': %w (output: %s)", dbName, err, strings.TrimSpace(string(output)))
 	}
 
-	e.log.Info("Successfully created database", "name", dbName)
+	e.log.Info("Successfully created database from template0", "name", dbName)
 	return nil
 }
 
