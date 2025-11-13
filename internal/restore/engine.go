@@ -607,6 +607,23 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 				mu.Lock()
 				e.log.Error("Failed to restore database", "name", dbName, "file", dumpFile, "error", restoreErr)
 				mu.Unlock()
+				
+				// Check for specific recoverable errors
+				errMsg := restoreErr.Error()
+				if strings.Contains(errMsg, "max_locks_per_transaction") {
+					mu.Lock()
+					e.log.Warn("Database restore failed due to insufficient locks - this is a PostgreSQL configuration issue", 
+						"database", dbName, 
+						"solution", "increase max_locks_per_transaction in postgresql.conf")
+					mu.Unlock()
+				} else if strings.Contains(errMsg, "total errors:") && strings.Contains(errMsg, "2562426") {
+					mu.Lock()
+					e.log.Warn("Database has massive error count - likely data corruption or incompatible dump format",
+						"database", dbName,
+						"errors", "2562426")
+					mu.Unlock()
+				}
+				
 				failedDBsMu.Lock()
 				// Include more context in the error message
 				failedDBs = append(failedDBs, fmt.Sprintf("%s: restore failed: %v", dbName, restoreErr))
@@ -628,10 +645,18 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	failCountFinal := int(atomic.LoadInt32(&failCount))
 
 	if failCountFinal > 0 {
-		failedList := strings.Join(failedDBs, "; ")
-		e.progress.Fail(fmt.Sprintf("Cluster restore completed with errors: %d succeeded, %d failed", successCountFinal, failCountFinal))
-		operation.Complete(fmt.Sprintf("Partial restore: %d succeeded, %d failed", successCountFinal, failCountFinal))
-		return fmt.Errorf("cluster restore completed with %d failures: %s", failCountFinal, failedList)
+		failedList := strings.Join(failedDBs, "\n  ")
+		
+		// Log summary
+		e.log.Info("Cluster restore completed with failures",
+			"succeeded", successCountFinal,
+			"failed", failCountFinal,
+			"total", totalDBs)
+		
+		e.progress.Fail(fmt.Sprintf("Cluster restore: %d succeeded, %d failed out of %d total", successCountFinal, failCountFinal, totalDBs))
+		operation.Complete(fmt.Sprintf("Partial restore: %d/%d databases succeeded", successCountFinal, totalDBs))
+		
+		return fmt.Errorf("cluster restore completed with %d failures:\n  %s", failCountFinal, failedList)
 	}
 
 	e.progress.Complete(fmt.Sprintf("Cluster restored successfully: %d databases", successCountFinal))
