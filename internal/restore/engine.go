@@ -287,13 +287,15 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 	// Read stderr in chunks to log errors without loading all into memory
 	buf := make([]byte, 4096)
 	var lastError string
+	var allErrors []string
 	for {
 		n, err := stderr.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
-			// Only log errors/warnings, not all output
-			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") {
+			// Capture all errors/warnings for better diagnostics
+			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") || strings.Contains(chunk, "error:") {
 				lastError = chunk
+				allErrors = append(allErrors, strings.TrimSpace(chunk))
 				e.log.Warn("Restore stderr", "output", chunk)
 			}
 		}
@@ -303,7 +305,15 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 	}
 
 	if err := cmd.Wait(); err != nil {
-		e.log.Error("Restore command failed", "error", err, "last_error", lastError)
+		// Include all captured errors in the return message for better diagnostics
+		errorDetails := lastError
+		if len(allErrors) > 0 {
+			errorDetails = strings.Join(allErrors, " | ")
+		}
+		e.log.Error("Restore command failed", "error", err, "stderr", errorDetails)
+		if errorDetails != "" {
+			return fmt.Errorf("restore failed: %w (stderr: %s)", err, errorDetails)
+		}
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
@@ -342,13 +352,15 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	// Read stderr in chunks to log errors without loading all into memory
 	buf := make([]byte, 4096)
 	var lastError string
+	var allErrors []string
 	for {
 		n, err := stderr.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
-			// Only log errors/warnings, not all output
-			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") {
+			// Capture all errors/warnings for better diagnostics
+			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") || strings.Contains(chunk, "error:") {
 				lastError = chunk
+				allErrors = append(allErrors, strings.TrimSpace(chunk))
 				e.log.Warn("Restore stderr", "output", chunk)
 			}
 		}
@@ -358,7 +370,15 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	}
 
 	if err := cmd.Wait(); err != nil {
-		e.log.Error("Restore with decompression failed", "error", err, "last_error", lastError)
+		// Include all captured errors in the return message for better diagnostics
+		errorDetails := lastError
+		if len(allErrors) > 0 {
+			errorDetails = strings.Join(allErrors, " | ")
+		}
+		e.log.Error("Restore with decompression failed", "error", err, "stderr", errorDetails)
+		if errorDetails != "" {
+			return fmt.Errorf("restore failed: %w (stderr: %s)", err, errorDetails)
+		}
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
@@ -572,17 +592,24 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 			var restoreErr error
 			if isCompressedSQL {
-				e.log.Info("Detected compressed SQL format, using psql + gunzip", "file", dumpFile)
+				mu.Lock()
+				e.log.Info("Detected compressed SQL format, using psql + gunzip", "file", dumpFile, "database", dbName)
+				mu.Unlock()
 				restoreErr = e.restorePostgreSQLSQL(ctx, dumpFile, dbName, true)
 			} else {
-				e.log.Info("Detected custom dump format, using pg_restore", "file", dumpFile)
+				mu.Lock()
+				e.log.Info("Detected custom dump format, using pg_restore", "file", dumpFile, "database", dbName)
+				mu.Unlock()
 				restoreErr = e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership)
 			}
 
 			if restoreErr != nil {
-				e.log.Error("Failed to restore database", "name", dbName, "error", restoreErr)
+				mu.Lock()
+				e.log.Error("Failed to restore database", "name", dbName, "file", dumpFile, "error", restoreErr)
+				mu.Unlock()
 				failedDBsMu.Lock()
-				failedDBs = append(failedDBs, fmt.Sprintf("%s: %v", dbName, restoreErr))
+				// Include more context in the error message
+				failedDBs = append(failedDBs, fmt.Sprintf("%s: restore failed: %v", dbName, restoreErr))
 				failedDBsMu.Unlock()
 				atomic.AddInt32(&failCount, 1)
 				return

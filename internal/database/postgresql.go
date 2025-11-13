@@ -371,6 +371,9 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 		cmd = append(cmd, "--single-transaction")
 	}
 	
+	// Add verbose flag for better error reporting
+	cmd = append(cmd, "--verbose")
+	
 	// Database and input
 	cmd = append(cmd, "--dbname="+database)
 	cmd = append(cmd, inputFile)
