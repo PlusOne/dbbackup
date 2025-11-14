@@ -548,10 +548,23 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	estimator := progress.NewETAEstimator("Restoring cluster", totalDBs)
 	e.progress.SetEstimator(estimator)
 
+	// Check for large objects in dump files and adjust parallelism
+	hasLargeObjects := e.detectLargeObjectsInDumps(dumpsDir, entries)
+	
 	// Use worker pool for parallel restore
 	parallelism := e.cfg.ClusterParallelism
 	if parallelism < 1 {
 		parallelism = 1 // Ensure at least sequential
+	}
+	
+	// Automatically reduce parallelism if large objects detected
+	if hasLargeObjects && parallelism > 1 {
+		e.log.Warn("Large objects detected in dump files - reducing parallelism to avoid lock contention",
+			"original_parallelism", parallelism,
+			"adjusted_parallelism", 1)
+		e.progress.Update("⚠️  Large objects detected - using sequential restore to avoid lock conflicts")
+		time.Sleep(2 * time.Second) // Give user time to see warning
+		parallelism = 1
 	}
 
 	var successCount, failCount int32
@@ -971,6 +984,56 @@ func (e *Engine) previewClusterRestore(archivePath string) error {
 	fmt.Println(strings.Repeat("=", 60) + "\n")
 
 	return nil
+}
+
+// detectLargeObjectsInDumps checks if any dump files contain large objects
+func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntry) bool {
+	hasLargeObjects := false
+	checkedCount := 0
+	maxChecks := 5 // Only check first 5 dumps to avoid slowdown
+	
+	for _, entry := range entries {
+		if entry.IsDir() || checkedCount >= maxChecks {
+			continue
+		}
+		
+		dumpFile := filepath.Join(dumpsDir, entry.Name())
+		
+		// Skip compressed SQL files (can't easily check without decompressing)
+		if strings.HasSuffix(dumpFile, ".sql.gz") {
+			continue
+		}
+		
+		// Use pg_restore -l to list contents (fast, doesn't restore data)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+		output, err := cmd.Output()
+		
+		if err != nil {
+			// If pg_restore -l fails, it might not be custom format - skip
+			continue
+		}
+		
+		checkedCount++
+		
+		// Check if output contains "BLOB" or "LARGE OBJECT" entries
+		outputStr := string(output)
+		if strings.Contains(outputStr, "BLOB") || 
+		   strings.Contains(outputStr, "LARGE OBJECT") ||
+		   strings.Contains(outputStr, " BLOBS ") {
+			e.log.Info("Large objects detected in dump file", "file", entry.Name())
+			hasLargeObjects = true
+			// Don't break - log all files with large objects
+		}
+	}
+	
+	if hasLargeObjects {
+		e.log.Warn("Cluster contains databases with large objects - parallel restore may cause lock contention")
+	}
+	
+	return hasLargeObjects
 }
 
 // FormatBytes formats bytes to human readable format

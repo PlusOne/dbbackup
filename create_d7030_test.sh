@@ -5,8 +5,12 @@
 set -euo pipefail
 
 DB_NAME="d7030"
-NUM_DOCUMENTS=3000  # Number of documents with BLOBs (increased to stress test locks)
-NUM_IMAGES=2000     # Number of image records (increased to stress test locks)
+NUM_DOCUMENTS=15000  # Number of documents with BLOBs (~750MB at 50KB each)
+NUM_IMAGES=10000     # Number of image records (~900MB for images + ~100MB thumbnails)
+# Total BLOBs: 25,000 large objects
+# Approximate size: 15000*50KB + 10000*90KB + 10000*10KB = ~2.4GB in BLOBs alone
+# With tables, indexes, and overhead: ~3-4GB per iteration
+# We'll create multiple batches to reach ~25GB
 
 echo "Creating database: $DB_NAME"
 
@@ -109,10 +113,12 @@ FROM generate_series(1, 50);
 EOF
 
 echo "Inserting documents with large objects (BLOBs)..."
+echo "This will take several minutes to create ~25GB of data..."
 
-# Create a temporary file with random data for importing in postgres home
+# Create temporary files with random data for importing in postgres home
+# Make documents larger for 25GB target: ~1MB each
 TEMP_FILE="/var/lib/pgsql/test_blob_data.bin"
-sudo dd if=/dev/urandom of="$TEMP_FILE" bs=1024 count=50 2>/dev/null
+sudo dd if=/dev/urandom of="$TEMP_FILE" bs=1M count=1 2>/dev/null
 sudo chown postgres:postgres "$TEMP_FILE"
 
 # Create documents with actual large objects using lo_import
@@ -145,7 +151,7 @@ BEGIN
             END),
             'This is a test document with large object data. Document number ' || i,
             v_loid,
-            51200,
+            1048576,
             (CASE v_type_id 
                 WHEN 1 THEN 'application/pdf'
                 WHEN 2 THEN 'application/pdf'
@@ -156,7 +162,7 @@ BEGIN
         );
         
         -- Progress indicator
-        IF i % 50 = 0 THEN
+        IF i % 500 = 0 THEN
             RAISE NOTICE 'Created % documents with BLOBs...', i;
         END IF;
     END LOOP;
@@ -168,10 +174,11 @@ rm -f "$TEMP_FILE"
 echo "Inserting images with large objects..."
 
 # Create temp files for image and thumbnail in postgres home
+# Make images larger: ~1.5MB for full image, ~200KB for thumbnail
 TEMP_IMAGE="/var/lib/pgsql/test_image_data.bin"
 TEMP_THUMB="/var/lib/pgsql/test_thumb_data.bin"
-sudo dd if=/dev/urandom of="$TEMP_IMAGE" bs=1024 count=80 2>/dev/null
-sudo dd if=/dev/urandom of="$TEMP_THUMB" bs=1024 count=10 2>/dev/null
+sudo dd if=/dev/urandom of="$TEMP_IMAGE" bs=1M count=1 bs=512K count=3 2>/dev/null
+sudo dd if=/dev/urandom of="$TEMP_THUMB" bs=1K count=200 2>/dev/null
 sudo chown postgres:postgres "$TEMP_IMAGE" "$TEMP_THUMB"
 
 # Create images with multiple large objects per record
@@ -207,7 +214,7 @@ BEGIN
             (random() * 1500 + 600)::INTEGER
         );
         
-        IF i % 50 = 0 THEN
+        IF i % 500 = 0 THEN
             RAISE NOTICE 'Created % images with BLOBs...', i;
         END IF;
     END LOOP;
@@ -265,8 +272,10 @@ echo ""
 echo "✅ Database $DB_NAME created successfully with realistic data and BLOBs!"
 echo ""
 echo "Large objects created:"
-echo "  - $NUM_DOCUMENTS documents (each with 1 BLOB)"
-echo "  - $NUM_IMAGES images (each with 2 BLOBs: full image + thumbnail)"
+echo "  - $NUM_DOCUMENTS documents (each with ~1MB BLOB)"
+echo "  - $NUM_IMAGES images (each with 2 BLOBs: ~1.5MB image + ~200KB thumbnail)"
 echo "  - Total: ~$((NUM_DOCUMENTS + NUM_IMAGES * 2)) large objects"
+echo ""
+echo "Estimated size: ~$((NUM_DOCUMENTS * 1 + NUM_IMAGES * 1 + NUM_IMAGES * 0))MB in BLOBs"
 echo ""
 echo "You can now backup this database and test restore with large object locks."
