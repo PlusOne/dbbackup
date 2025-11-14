@@ -4,8 +4,8 @@ This directory contains pre-compiled binaries for the DB Backup Tool across mult
 
 ## Build Information
 - **Version**: 1.1.0
-- **Build Time**: 2025-11-13_16:14:25_UTC
-- **Git Commit**: 2a382ef
+- **Build Time**: 2025-11-14_09:41:56_UTC
+- **Git Commit**: 11c7f85
 
 ## Recent Updates (v1.1.0)
 - ✅ Fixed TUI progress display with line-by-line output

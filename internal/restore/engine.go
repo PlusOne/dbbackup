@@ -110,6 +110,29 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 	format := DetectArchiveFormat(archivePath)
 	e.log.Info("Detected archive format", "format", format, "path", archivePath)
 
+	// Check version compatibility for PostgreSQL dumps
+	if format == FormatPostgreSQLDump || format == FormatPostgreSQLDumpGz {
+		if compatResult, err := e.CheckRestoreVersionCompatibility(ctx, archivePath); err == nil && compatResult != nil {
+			e.log.Info(compatResult.Message,
+				"source_version", compatResult.SourceVersion.Full,
+				"target_version", compatResult.TargetVersion.Full,
+				"compatibility", compatResult.Level.String())
+
+			// Block unsupported downgrades
+			if !compatResult.Compatible {
+				operation.Fail(compatResult.Message)
+				return fmt.Errorf("version compatibility error: %s", compatResult.Message)
+			}
+
+			// Show warnings for risky upgrades
+			if compatResult.Level == CompatibilityLevelRisky || compatResult.Level == CompatibilityLevelWarning {
+				for _, warning := range compatResult.Warnings {
+					e.log.Warn(warning)
+				}
+			}
+		}
+	}
+
 	if e.dryRun {
 		e.log.Info("DRY RUN: Would restore single database", "archive", archivePath, "target", targetDB)
 		return e.previewRestore(archivePath, targetDB, format)
