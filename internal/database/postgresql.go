@@ -371,9 +371,9 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 		cmd = append(cmd, "--single-transaction")
 	}
 	
-	// CRITICAL: Exit on first error (by default pg_restore continues on errors)
-	// This ensures we catch failures immediately instead of at the end
-	cmd = append(cmd, "--exit-on-error")
+	// NOTE: --exit-on-error removed because it causes entire restore to fail on
+	// "already exists" errors. PostgreSQL continues on ignorable errors by default
+	// and reports error count at the end, which is correct behavior for restores.
 	
 	// Skip data restore if table creation fails (prevents duplicate data errors)
 	cmd = append(cmd, "--no-data-for-failed-tables")

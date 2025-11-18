@@ -183,8 +183,8 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 		Clean:             cleanFirst,
 		NoOwner:           true,
 		NoPrivileges:      true,
-		SingleTransaction: true,
-		Verbose:           true, // Enable verbose for single database restores (not cluster)
+		SingleTransaction: false, // CRITICAL: Disabled to prevent lock exhaustion with large objects
+		Verbose:           true,  // Enable verbose for single database restores (not cluster)
 	}
 
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, opts)
@@ -205,7 +205,7 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 		Clean:             false,              // We already dropped the database
 		NoOwner:           !preserveOwnership, // Preserve ownership if we're superuser
 		NoPrivileges:      !preserveOwnership, // Preserve privileges if we're superuser
-		SingleTransaction: true,
+		SingleTransaction: false,              // CRITICAL: Disabled to prevent lock exhaustion with large objects
 		Verbose:           false,              // CRITICAL: disable verbose to prevent OOM on large restores
 	}
 
