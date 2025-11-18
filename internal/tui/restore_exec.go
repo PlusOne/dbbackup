@@ -23,6 +23,7 @@ type RestoreExecutionModel struct {
 	config          *config.Config
 	logger          logger.Logger
 	parent          tea.Model
+	ctx             context.Context
 	archive         ArchiveInfo
 	targetDB        string
 	cleanFirst      bool
@@ -48,11 +49,12 @@ type RestoreExecutionModel struct {
 }
 
 // NewRestoreExecution creates a new restore execution model
-func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) RestoreExecutionModel {
+func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) RestoreExecutionModel {
 	return RestoreExecutionModel{
 		config:          cfg,
 		logger:          log,
 		parent:          parent,
+		ctx:             ctx,
 		archive:         archive,
 		targetDB:        targetDB,
 		cleanFirst:      cleanFirst,
@@ -71,7 +73,7 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 
 func (m RestoreExecutionModel) Init() tea.Cmd {
 	return tea.Batch(
-		executeRestoreWithTUIProgress(m.config, m.logger, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.restoreType, m.cleanClusterFirst, m.existingDBs),
+		executeRestoreWithTUIProgress(m.ctx, m.config, m.logger, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.restoreType, m.cleanClusterFirst, m.existingDBs),
 		restoreTickCmd(),
 	)
 }
@@ -97,11 +99,12 @@ type restoreCompleteMsg struct {
 	elapsed time.Duration
 }
 
-func executeRestoreWithTUIProgress(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) tea.Cmd {
+func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) tea.Cmd {
 	return func() tea.Msg {
 		// Use configurable cluster timeout (minutes) from config; default set in config.New()
+		// Use parent context to inherit cancellation from TUI
 		restoreTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
-		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
+		ctx, cancel := context.WithTimeout(parentCtx, restoreTimeout)
 		defer cancel()
 
 		start := time.Now()

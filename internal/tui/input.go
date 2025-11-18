@@ -65,7 +65,7 @@ func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If this is from database selector, execute backup with ratio
 			if selector, ok := m.parent.(DatabaseSelectorModel); ok {
 				ratio, _ := strconv.Atoi(m.value)
-				executor := NewBackupExecution(selector.config, selector.logger, selector.parent, 
+				executor := NewBackupExecution(selector.config, selector.logger, selector.parent, selector.ctx,
 					selector.backupType, selector.selected, ratio)
 				return executor, executor.Init()
 			}

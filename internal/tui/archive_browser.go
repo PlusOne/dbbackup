@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,6 +56,7 @@ type ArchiveBrowserModel struct {
 	config     *config.Config
 	logger     logger.Logger
 	parent     tea.Model
+	ctx        context.Context
 	archives   []ArchiveInfo
 	cursor     int
 	loading    bool
@@ -65,11 +67,12 @@ type ArchiveBrowserModel struct {
 }
 
 // NewArchiveBrowser creates a new archive browser
-func NewArchiveBrowser(cfg *config.Config, log logger.Logger, parent tea.Model, mode string) ArchiveBrowserModel {
+func NewArchiveBrowser(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, mode string) ArchiveBrowserModel {
 	return ArchiveBrowserModel{
 		config:     cfg,
 		logger:     log,
 		parent:     parent,
+		ctx:        ctx,
 		loading:    true,
 		mode:       mode,
 		filterType: "all",
@@ -206,7 +209,7 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// Open restore preview
-				preview := NewRestorePreview(m.config, m.logger, m.parent, selected, m.mode)
+				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, selected, m.mode)
 				return preview, preview.Init()
 			}
 

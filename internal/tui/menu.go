@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
@@ -119,9 +120,17 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			// Cancel all running operations
 			if m.cancel != nil {
 				m.cancel()
 			}
+			
+			// Clean up any orphaned processes before exit
+			m.logger.Info("Cleaning up processes before exit")
+			if err := cleanup.KillOrphanedProcesses(m.logger); err != nil {
+				m.logger.Warn("Failed to clean up all processes", "error", err)
+			}
+			
 			m.quitting = true
 			return m, tea.Quit
 
@@ -252,13 +261,13 @@ func (m MenuModel) View() string {
 
 // handleSingleBackup opens database selector for single backup
 func (m MenuModel) handleSingleBackup() (tea.Model, tea.Cmd) {
-	selector := NewDatabaseSelector(m.config, m.logger, m, "🗄️  Single Database Backup", "single")
+	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "🗄️  Single Database Backup", "single")
 	return selector, selector.Init()
 }
 
 // handleSampleBackup opens database selector for sample backup
 func (m MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
-	selector := NewDatabaseSelector(m.config, m.logger, m, "📊 Sample Database Backup", "sample")
+	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "📊 Sample Database Backup", "sample")
 	return selector, selector.Init()
 }
 
@@ -272,7 +281,7 @@ func (m MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 		"🗄️  Cluster Backup",
 		"This will backup ALL databases in the cluster. Continue?",
 		func() (tea.Model, tea.Cmd) {
-			executor := NewBackupExecution(m.config, m.logger, m, "cluster", "", 0)
+			executor := NewBackupExecution(m.config, m.logger, m, m.ctx, "cluster", "", 0)
 			return executor, executor.Init()
 		})
 	return confirm, nil
@@ -305,7 +314,7 @@ func (m MenuModel) handleSettings() (tea.Model, tea.Cmd) {
 
 // handleRestoreSingle opens archive browser for single restore
 func (m MenuModel) handleRestoreSingle() (tea.Model, tea.Cmd) {
-	browser := NewArchiveBrowser(m.config, m.logger, m, "restore-single")
+	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "restore-single")
 	return browser, browser.Init()
 }
 
@@ -315,13 +324,13 @@ func (m MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
 		m.message = errorStyle.Render("❌ Cluster restore is available only for PostgreSQL")
 		return m, nil
 	}
-	browser := NewArchiveBrowser(m.config, m.logger, m, "restore-cluster")
+	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "restore-cluster")
 	return browser, browser.Init()
 }
 
 // handleBackupManager opens backup management view
 func (m MenuModel) handleBackupManager() (tea.Model, tea.Cmd) {
-	manager := NewBackupManager(m.config, m.logger, m)
+	manager := NewBackupManager(m.config, m.logger, m, m.ctx)
 	return manager, manager.Init()
 }
 

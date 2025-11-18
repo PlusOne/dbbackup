@@ -19,6 +19,7 @@ type BackupExecutionModel struct {
 	config       *config.Config
 	logger       logger.Logger
 	parent       tea.Model
+	ctx          context.Context
 	backupType   string
 	databaseName string
 	ratio        int
@@ -32,11 +33,12 @@ type BackupExecutionModel struct {
 	spinnerFrame int
 }
 
-func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, backupType, dbName string, ratio int) BackupExecutionModel {
+func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
 	return BackupExecutionModel{
 		config:       cfg,
 		logger:       log,
 		parent:       parent,
+		ctx:          ctx,
 		backupType:   backupType,
 		databaseName: dbName,
 		ratio:        ratio,
@@ -50,7 +52,7 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 func (m BackupExecutionModel) Init() tea.Cmd {
 	// TUI handles all display through View() - no progress callbacks needed
 	return tea.Batch(
-		executeBackupWithTUIProgress(m.config, m.logger, m.backupType, m.databaseName, m.ratio),
+		executeBackupWithTUIProgress(m.ctx, m.config, m.logger, m.backupType, m.databaseName, m.ratio),
 		backupTickCmd(),
 	)
 }
@@ -74,11 +76,12 @@ type backupCompleteMsg struct {
 	err    error
 }
 
-func executeBackupWithTUIProgress(cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
+func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
 	return func() tea.Msg {
 			// Use configurable cluster timeout (minutes) from config; default set in config.New()
+			// Use parent context to inherit cancellation from TUI
 			clusterTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
-			ctx, cancel := context.WithTimeout(context.Background(), clusterTimeout)
+			ctx, cancel := context.WithTimeout(parentCtx, clusterTimeout)
 		defer cancel()
 
 		start := time.Now()

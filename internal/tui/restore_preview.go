@@ -46,6 +46,7 @@ type RestorePreviewModel struct {
 	config       *config.Config
 	logger       logger.Logger
 	parent       tea.Model
+	ctx          context.Context
 	archive      ArchiveInfo
 	mode         string
 	targetDB     string
@@ -61,7 +62,7 @@ type RestorePreviewModel struct {
 }
 
 // NewRestorePreview creates a new restore preview
-func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, archive ArchiveInfo, mode string) RestorePreviewModel {
+func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, mode string) RestorePreviewModel {
 	// Default target database name from archive
 	targetDB := archive.DatabaseName
 	if targetDB == "" {
@@ -72,6 +73,7 @@ func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, 
 		config:       cfg,
 		logger:       log,
 		parent:       parent,
+		ctx:          ctx,
 		archive:      archive,
 		mode:         mode,
 		targetDB:     targetDB,
@@ -249,7 +251,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Proceed to restore execution
-			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs)
+			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs)
 			return exec, exec.Init()
 		}
 	}

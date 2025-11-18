@@ -18,6 +18,7 @@ type DatabaseSelectorModel struct {
 	config     *config.Config
 	logger     logger.Logger
 	parent     tea.Model
+	ctx        context.Context
 	databases  []string
 	cursor     int
 	selected   string
@@ -28,11 +29,12 @@ type DatabaseSelectorModel struct {
 	backupType string // "single" or "sample"
 }
 
-func NewDatabaseSelector(cfg *config.Config, log logger.Logger, parent tea.Model, title string, backupType string) DatabaseSelectorModel {
+func NewDatabaseSelector(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, title string, backupType string) DatabaseSelectorModel {
 	return DatabaseSelectorModel{
 		config:     cfg,
 		logger:     log,
 		parent:     parent,
+		ctx:        ctx,
 		databases:  []string{"Loading databases..."},
 		title:      title,
 		loading:    true,
@@ -115,7 +117,7 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				
 				// For single backup, go directly to execution
-				executor := NewBackupExecution(m.config, m.logger, m.parent, m.backupType, m.selected, 0)
+				executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, m.backupType, m.selected, 0)
 				return executor, executor.Init()
 			}
 		}

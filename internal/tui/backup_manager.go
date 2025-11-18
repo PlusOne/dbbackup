@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ type BackupManagerModel struct {
 	config    *config.Config
 	logger    logger.Logger
 	parent    tea.Model
+	ctx       context.Context
 	archives  []ArchiveInfo
 	cursor    int
 	loading   bool
@@ -27,11 +29,12 @@ type BackupManagerModel struct {
 }
 
 // NewBackupManager creates a new backup manager
-func NewBackupManager(cfg *config.Config, log logger.Logger, parent tea.Model) BackupManagerModel {
+func NewBackupManager(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context) BackupManagerModel {
 	return BackupManagerModel{
 		config:  cfg,
 		logger:  log,
 		parent:  parent,
+		ctx:     ctx,
 		loading: true,
 	}
 }
@@ -126,7 +129,7 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if selected.Format.IsClusterBackup() {
 					mode = "restore-cluster"
 				}
-				preview := NewRestorePreview(m.config, m.logger, m.parent, selected, mode)
+				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, selected, mode)
 				return preview, preview.Init()
 			}
 
