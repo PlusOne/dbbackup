@@ -334,6 +334,13 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 	}
 
 	if err := cmd.Wait(); err != nil {
+		// PostgreSQL pg_restore returns exit code 1 even for ignorable errors
+		// Check if errors are ignorable (already exists, duplicate, etc.)
+		if lastError != "" && e.isIgnorableError(lastError) {
+			e.log.Warn("Restore completed with ignorable errors", "error_count", errorCount, "last_error", lastError)
+			return nil // Success despite ignorable errors
+		}
+		
 		e.log.Error("Restore command failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
 		if lastError != "" {
 			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d)", err, lastError, errorCount)
@@ -398,6 +405,13 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	}
 
 	if err := cmd.Wait(); err != nil {
+		// PostgreSQL pg_restore returns exit code 1 even for ignorable errors
+		// Check if errors are ignorable (already exists, duplicate, etc.)
+		if lastError != "" && e.isIgnorableError(lastError) {
+			e.log.Warn("Restore with decompression completed with ignorable errors", "error_count", errorCount, "last_error", lastError)
+			return nil // Success despite ignorable errors
+		}
+		
 		e.log.Error("Restore with decompression failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
 		if lastError != "" {
 			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d)", err, lastError, errorCount)
@@ -1034,6 +1048,49 @@ func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntr
 	}
 	
 	return hasLargeObjects
+}
+
+// isIgnorableError checks if an error message represents an ignorable PostgreSQL restore error
+func (e *Engine) isIgnorableError(errorMsg string) bool {
+	// Convert to lowercase for case-insensitive matching
+	lowerMsg := strings.ToLower(errorMsg)
+	
+	// CRITICAL: Syntax errors are NOT ignorable - indicates corrupted dump
+	if strings.Contains(lowerMsg, "syntax error") {
+		e.log.Error("CRITICAL: Syntax error in dump file - dump may be corrupted", "error", errorMsg)
+		return false
+	}
+	
+	// CRITICAL: If error count is extremely high (>100k), dump is likely corrupted
+	if strings.Contains(errorMsg, "total errors:") {
+		// Extract error count if present in message
+		parts := strings.Split(errorMsg, "total errors:")
+		if len(parts) > 1 {
+			errorCountStr := strings.TrimSpace(strings.Split(parts[1], ")")[0])
+			// Try to parse as number
+			var count int
+			if _, err := fmt.Sscanf(errorCountStr, "%d", &count); err == nil && count > 100000 {
+				e.log.Error("CRITICAL: Excessive errors indicate corrupted dump", "error_count", count)
+				return false
+			}
+		}
+	}
+	
+	// List of ignorable error patterns (objects that already exist)
+	ignorablePatterns := []string{
+		"already exists",
+		"duplicate key",
+		"does not exist, skipping", // For DROP IF EXISTS
+		"no pg_hba.conf entry",      // Permission warnings (not fatal)
+	}
+	
+	for _, pattern := range ignorablePatterns {
+		if strings.Contains(lowerMsg, pattern) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // FormatBytes formats bytes to human readable format
