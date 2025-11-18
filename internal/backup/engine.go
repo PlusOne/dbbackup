@@ -360,12 +360,31 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	var wg sync.WaitGroup
 	
 	for i, dbName := range databases {
+		// Check if context is cancelled before starting new backup
+		select {
+		case <-ctx.Done():
+			e.log.Info("Backup cancelled by user")
+			quietProgress.Fail("Backup cancelled by user (Ctrl+C)")
+			operation.Fail("Backup cancelled")
+			return fmt.Errorf("backup cancelled: %w", ctx.Err())
+		default:
+		}
+		
 		wg.Add(1)
 		semaphore <- struct{}{} // Acquire
 		
 		go func(idx int, name string) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release
+			
+			// Check for cancellation at start of goroutine
+			select {
+			case <-ctx.Done():
+				e.log.Info("Database backup cancelled", "database", name)
+				atomic.AddInt32(&failCount, 1)
+				return
+			default:
+			}
 			
 			// Update estimator progress (thread-safe)
 			mu.Lock()
