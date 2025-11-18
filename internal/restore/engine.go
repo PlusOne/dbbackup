@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
@@ -341,10 +342,21 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 			return nil // Success despite ignorable errors
 		}
 		
-		e.log.Error("Restore command failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
+		// Classify error and provide helpful hints
 		if lastError != "" {
-			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d)", err, lastError, errorCount)
+			classification := checks.ClassifyError(lastError)
+			e.log.Error("Restore command failed", 
+				"error", err, 
+				"last_stderr", lastError, 
+				"error_count", errorCount,
+				"error_type", classification.Type,
+				"hint", classification.Hint,
+				"action", classification.Action)
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s", 
+				err, lastError, errorCount, classification.Hint)
 		}
+		
+		e.log.Error("Restore command failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
@@ -412,10 +424,21 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 			return nil // Success despite ignorable errors
 		}
 		
-		e.log.Error("Restore with decompression failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
+		// Classify error and provide helpful hints
 		if lastError != "" {
-			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d)", err, lastError, errorCount)
+			classification := checks.ClassifyError(lastError)
+			e.log.Error("Restore with decompression failed", 
+				"error", err, 
+				"last_stderr", lastError, 
+				"error_count", errorCount,
+				"error_type", classification.Type,
+				"hint", classification.Hint,
+				"action", classification.Action)
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s", 
+				err, lastError, errorCount, classification.Hint)
 		}
+		
+		e.log.Error("Restore with decompression failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
@@ -473,6 +496,24 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	if format != FormatClusterTarGz {
 		operation.Fail("Invalid cluster archive format")
 		return fmt.Errorf("not a cluster archive: %s (detected format: %s)", archivePath, format)
+	}
+	
+	// Check disk space before starting restore
+	e.log.Info("Checking disk space for restore")
+	archiveInfo, err := os.Stat(archivePath)
+	if err == nil {
+		spaceCheck := checks.CheckDiskSpaceForRestore(e.cfg.BackupDir, archiveInfo.Size())
+		
+		if spaceCheck.Critical {
+			operation.Fail("Insufficient disk space")
+			return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size", spaceCheck.UsedPercent)
+		}
+		
+		if spaceCheck.Warning {
+			e.log.Warn("Low disk space - restore may fail", 
+				"available_gb", float64(spaceCheck.AvailableBytes)/(1024*1024*1024),
+				"used_percent", spaceCheck.UsedPercent)
+		}
 	}
 
 	if e.dryRun {

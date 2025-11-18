@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
@@ -301,6 +302,27 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		operation.Fail("Failed to create backup directory")
 		quietProgress.Fail("Failed to create backup directory")
 		return fmt.Errorf("failed to create backup directory: %w", err)
+	}
+	
+	// Check disk space before starting backup
+	e.log.Info("Checking disk space availability")
+	spaceCheck := checks.CheckDiskSpace(e.cfg.BackupDir)
+	
+	if !e.silent {
+		// Show disk space status in CLI mode
+		fmt.Println("\n" + checks.FormatDiskSpaceMessage(spaceCheck))
+	}
+	
+	if spaceCheck.Critical {
+		operation.Fail("Insufficient disk space")
+		quietProgress.Fail("Insufficient disk space - free up space and try again")
+		return fmt.Errorf("insufficient disk space: %.1f%% used, operation blocked", spaceCheck.UsedPercent)
+	}
+	
+	if spaceCheck.Warning {
+		e.log.Warn("Low disk space - backup may fail if database is large", 
+			"available_gb", float64(spaceCheck.AvailableBytes)/(1024*1024*1024),
+			"used_percent", spaceCheck.UsedPercent)
 	}
 	
 	// Generate timestamp and filename
