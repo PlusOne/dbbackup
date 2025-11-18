@@ -1,3 +1,6 @@
+//go:build !windows && !openbsd && !netbsd
+// +build !windows,!openbsd,!netbsd
+
 package checks
 
 import (
@@ -5,18 +8,6 @@ import (
 	"path/filepath"
 	"syscall"
 )
-
-// DiskSpaceCheck represents disk space information
-type DiskSpaceCheck struct {
-	Path           string
-	TotalBytes     uint64
-	AvailableBytes uint64
-	UsedBytes      uint64
-	UsedPercent    float64
-	Sufficient     bool
-	Warning        bool
-	Critical       bool
-}
 
 // CheckDiskSpace checks available disk space for a given path
 func CheckDiskSpace(path string) *DiskSpaceCheck {
@@ -37,9 +28,9 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 		}
 	}
 
-	// Calculate space
-	totalBytes := stat.Blocks * uint64(stat.Bsize)
-	availableBytes := stat.Bavail * uint64(stat.Bsize)
+	// Calculate space (handle different types on different platforms)
+	totalBytes := uint64(stat.Blocks) * uint64(stat.Bsize)
+	availableBytes := uint64(stat.Bavail) * uint64(stat.Bsize)
 	usedBytes := totalBytes - availableBytes
 	usedPercent := float64(usedBytes) / float64(totalBytes) * 100
 
@@ -146,16 +137,4 @@ func EstimateBackupSize(databaseSize uint64, compressionLevel int) uint64 {
 
 
 
-// formatBytes formats bytes to human-readable format
-func formatBytes(bytes uint64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := uint64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
+
