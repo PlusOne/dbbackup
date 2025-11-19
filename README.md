@@ -76,16 +76,69 @@ MySQL/MariaDB:
 
 Menu-driven interface for all operations. Press arrow keys to navigate, Enter to select.
 
+**Main Menu:**
+```
+┌─────────────────────────────────────────────┐
+│          Database Backup Tool               │
+├─────────────────────────────────────────────┤
+│ > Backup Database                           │
+│   Restore Database                          │
+│   List Backups                              │
+│   Configuration Settings                    │
+│   Exit                                      │
+├─────────────────────────────────────────────┤
+│ Database: postgres@localhost:5432           │
+│ Type: PostgreSQL                            │
+│ Backup Dir: /var/lib/pgsql/db_backups      │
+└─────────────────────────────────────────────┘
+```
+
+**Backup Progress:**
+```
+Backing up database: production_db
+
+[=================>              ] 45%
+Elapsed: 2m 15s  |  ETA: 2m 48s
+
+Current: Dumping table users (1.2M records)
+Speed: 25 MB/s  |  Size: 3.2 GB / 7.1 GB
+```
+
+**Configuration Settings:**
+```
+┌─────────────────────────────────────────────┐
+│        Configuration Settings               │
+├─────────────────────────────────────────────┤
+│ Compression Level: 6                        │
+│ Parallel Jobs: 16                           │
+│ Dump Jobs: 8                                │
+│ CPU Workload: Balanced                      │
+│ Max Cores: 32                               │
+├─────────────────────────────────────────────┤
+│ Auto-saved to: .dbbackup.conf               │
+└─────────────────────────────────────────────┘
+```
+
 #### Interactive Features
 
-- **Backup Selection**: Choose backup type (single, cluster, sample)
-- **Database Selection**: Browse and select database
-- **Configuration Settings**: Set compression, parallelism, CPU workload, performance options
-- **CPU Workload Profiles**: Balanced, CPU-Intensive, or I/O-Intensive (auto-adjusts Jobs/DumpJobs)
-- **Backup Management**: List, restore, verify, and delete backup archives
-- **Safety Checks**: Archive validation, disk space verification
-- **Progress Tracking**: Real-time progress with ETA estimation
-- **Restore Options**: Smart database cleanup detection, safety confirmations
+The interactive mode provides a menu-driven interface for all database operations:
+
+- **Backup Operations**: Single database, full cluster, or sample backups
+- **Restore Operations**: Database or cluster restoration with safety checks
+- **Configuration Management**: Auto-save/load settings per directory (.dbbackup.conf)
+- **Backup Archive Management**: List, verify, and delete backup files
+- **Performance Tuning**: CPU workload profiles (Balanced, CPU-Intensive, I/O-Intensive)
+- **Safety Features**: Disk space verification, archive validation, confirmation prompts
+- **Progress Tracking**: Real-time progress indicators with ETA estimation
+- **Error Handling**: Context-aware error messages with actionable hints
+
+**Configuration Persistence:**
+
+Settings are automatically saved to .dbbackup.conf in the current directory after successful operations and loaded on subsequent runs. This allows per-project configuration without global settings.
+
+Flags available:
+- `--no-config` - Skip loading saved configuration
+- `--no-save-config` - Prevent saving configuration after operation
 
 ### Command Line Mode
 
@@ -134,6 +187,8 @@ Restore full cluster:
 | `--max-cores` | Maximum CPU cores | 16 |
 | `--cpu-workload` | cpu-intensive, io-intensive, balanced | balanced |
 | `--auto-detect-cores` | Auto-detect CPU cores | true |
+| `--no-config` | Skip loading .dbbackup.conf | false |
+| `--no-save-config` | Prevent saving configuration | false |
 | `--debug` | Enable debug logging | false |
 | `--no-color` | Disable colored output | false |
 
@@ -690,14 +745,16 @@ Binaries created in `bin/` directory.
 
 ## Best Practices
 
-1. **Test restores regularly** - Verify backups work
-2. **Monitor disk space** - Ensure adequate space
-3. **Use compression** - Balance speed/space (level 3-6)
-4. **Automate backups** - cron or systemd timers
-5. **Secure credentials** - .pgpass/.my.cnf with 0600 permissions
-6. **Keep versions** - Multiple backup versions for point-in-time recovery
-7. **Off-site storage** - Remote backup copies
-8. **Document procedures** - Maintain restore runbooks
+1. **Test restores regularly** - Verify backups work before disasters occur
+2. **Monitor disk space** - Maintain 4x archive size free space for restore operations
+3. **Use appropriate compression** - Balance speed and space (level 3-6 for production)
+4. **Leverage configuration persistence** - Use .dbbackup.conf for consistent per-project settings
+5. **Automate backups** - Schedule via cron or systemd timers
+6. **Secure credentials** - Use .pgpass/.my.cnf with 0600 permissions, never save passwords in config files
+7. **Maintain multiple versions** - Keep 7-30 days of backups for point-in-time recovery
+8. **Store backups off-site** - Remote copies protect against site-wide failures
+9. **Validate archives** - Run verification checks on backup files periodically
+10. **Document procedures** - Maintain runbooks for restore operations and disaster recovery
 
 ## Project Structure
 
@@ -730,33 +787,41 @@ MIT License
 
 ## Recent Improvements
 
+### Reliability Enhancements
+- **Context Cleanup**: Proper resource cleanup with sync.Once and io.Closer interface prevents memory leaks
+- **Process Management**: Thread-safe process tracking with automatic cleanup on exit
+- **Error Classification**: Regex-based error pattern matching for robust error handling
+- **Performance Caching**: Disk space checks cached with 30-second TTL to reduce syscall overhead
+- **Metrics Collection**: Structured logging with operation metrics for observability
+
+### Configuration Management
+- **Persistent Configuration**: Auto-save/load settings to .dbbackup.conf in current directory
+- **Per-Directory Settings**: Each project maintains its own database connection parameters
+- **Flag Override**: Command-line flags always take precedence over saved configuration
+- **Security**: Passwords excluded from saved configuration files
+
 ### Performance Optimizations
-- **Parallel Cluster Operations**: Worker pool pattern for concurrent database backup/restore (3-5x speedup)
-- **Memory Efficiency**: Streaming command output eliminates OOM errors on large restores
+- **Parallel Cluster Operations**: Worker pool pattern for concurrent database backup/restore
+- **Memory Efficiency**: Streaming command output eliminates OOM errors on large databases
 - **Optimized Goroutines**: Ticker-based progress indicators reduce CPU overhead
 - **Configurable Concurrency**: Control parallel database operations via CLUSTER_PARALLELISM
 
-### Interactive UI Enhancements
-- **CPU Workload Profiles**: Configure workload type in settings (auto-adjusts parallelism)
-- **Backup Management**: Delete archives directly from TUI with confirmation
-- **Better Callbacks**: Fixed confirmation dialogs to execute correct actions
-- **Cleaner Interface**: Configuration consolidated in Settings menu
-
-### Bug Fixes
-- Fixed OOM error during large cluster restores
-- Fixed delete backup incorrectly triggering cluster backup
-- Fixed signal handler cleanup preventing goroutine leaks
-- Improved error handling and user feedback
+### Cross-Platform Support
+- **Platform-Specific Implementations**: Separate disk space and process management for Unix/Windows/BSD
+- **Build Constraints**: Go build tags ensure correct compilation for each platform
+- **Tested Platforms**: Linux (x64/ARM), macOS (x64/ARM), Windows (x64/ARM), FreeBSD, OpenBSD
 
 ## Why dbbackup?
 
-- **Reliable** - Comprehensive safety checks, validation, and error handling
-- **Simple** - Intuitive menu-driven interface or straightforward CLI
-- **Fast** - Automatic CPU detection, parallel processing, streaming compression
-- **Efficient** - Minimal memory footprint, even for huge databases (constant ~1GB regardless of size)
-- **Flexible** - Multiple backup modes, compression levels, performance options
-- **Safe** - Dry-run by default, archive verification, smart database cleanup
-- **Complete** - Full cluster backup/restore, multiple formats
-- **Scalable** - Handles databases from megabytes to terabytes
+- **Reliable**: Thread-safe process management, comprehensive error handling, automatic cleanup
+- **Efficient**: Constant memory footprint (~1GB) regardless of database size via streaming architecture
+- **Fast**: Automatic CPU detection, parallel processing, streaming compression with pigz
+- **Intelligent**: Context-aware error messages, disk space pre-flight checks, configuration persistence
+- **Safe**: Dry-run by default, archive verification, confirmation prompts, backup validation
+- **Flexible**: Multiple backup modes, compression levels, CPU workload profiles, per-directory configuration
+- **Complete**: Full cluster operations, single database backups, sample data extraction
+- **Cross-Platform**: Native binaries for Linux, macOS, Windows, FreeBSD, OpenBSD
+- **Scalable**: Tested with databases from megabytes to 100+ gigabytes
+- **Observable**: Structured logging, metrics collection, progress tracking with ETA
 
-dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases of any size.
+dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases. Successfully tested with 42GB databases containing 35,000 large objects.
