@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"dbbackup/internal/backup"
+	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 )
 
@@ -43,7 +44,21 @@ func runClusterBackup(ctx context.Context) error {
 	engine := backup.New(cfg, log, db)
 	
 	// Perform cluster backup
-	return engine.BackupCluster(ctx)
+	if err := engine.BackupCluster(ctx); err != nil {
+		return err
+	}
+	
+	// Save configuration for future use (unless disabled)
+	if !cfg.NoSaveConfig {
+		localCfg := config.ConfigFromConfig(cfg)
+		if err := config.SaveLocalConfig(localCfg); err != nil {
+			log.Warn("Failed to save configuration", "error", err)
+		} else {
+			log.Info("Configuration saved to .dbbackup.conf")
+		}
+	}
+	
+	return nil
 }
 
 // runSingleBackup performs a single database backup
@@ -88,7 +103,21 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	engine := backup.New(cfg, log, db)
 	
 	// Perform single database backup
-	return engine.BackupSingle(ctx, databaseName)
+	if err := engine.BackupSingle(ctx, databaseName); err != nil {
+		return err
+	}
+	
+	// Save configuration for future use (unless disabled)
+	if !cfg.NoSaveConfig {
+		localCfg := config.ConfigFromConfig(cfg)
+		if err := config.SaveLocalConfig(localCfg); err != nil {
+			log.Warn("Failed to save configuration", "error", err)
+		} else {
+			log.Info("Configuration saved to .dbbackup.conf")
+		}
+	}
+	
+	return nil
 }
 
 // runSampleBackup performs a sample database backup
@@ -154,6 +183,20 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	// Create backup engine
 	engine := backup.New(cfg, log, db)
 	
-	// Perform sample database backup
-	return engine.BackupSample(ctx, databaseName)
+	// Perform sample backup
+	if err := engine.BackupSample(ctx, databaseName); err != nil {
+		return err
+	}
+	
+	// Save configuration for future use (unless disabled)
+	if !cfg.NoSaveConfig {
+		localCfg := config.ConfigFromConfig(cfg)
+		if err := config.SaveLocalConfig(localCfg); err != nil {
+			log.Warn("Failed to save configuration", "error", err)
+		} else {
+			log.Info("Configuration saved to .dbbackup.conf")
+		}
+	}
+	
+	return nil
 }

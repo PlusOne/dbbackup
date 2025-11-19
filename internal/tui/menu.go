@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -61,8 +63,9 @@ type MenuModel struct {
 	dbTypeCursor    int
 
 	// Background operations
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
 }
 
 func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
@@ -108,6 +111,19 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 
 	return model
 }
+
+// Close implements io.Closer for safe cleanup
+func (m *MenuModel) Close() error {
+	m.closeOnce.Do(func() {
+		if m.cancel != nil {
+			m.cancel()
+		}
+	})
+	return nil
+}
+
+// Ensure MenuModel implements io.Closer
+var _ io.Closer = (*MenuModel)(nil)
 
 // Init initializes the model
 func (m MenuModel) Init() tea.Cmd {

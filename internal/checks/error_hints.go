@@ -2,8 +2,20 @@ package checks
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// Compiled regex patterns for robust error matching
+var errorPatterns = map[string]*regexp.Regexp{
+	"already_exists":   regexp.MustCompile(`(?i)(already exists|duplicate key|unique constraint|relation.*exists)`),
+	"disk_full":        regexp.MustCompile(`(?i)(no space left|disk.*full|write.*failed.*space|insufficient.*space)`),
+	"lock_exhaustion":  regexp.MustCompile(`(?i)(max_locks_per_transaction|out of shared memory|lock.*exhausted|could not open large object)`),
+	"syntax_error":     regexp.MustCompile(`(?i)syntax error at.*line \d+`),
+	"permission_denied": regexp.MustCompile(`(?i)(permission denied|must be owner|access denied)`),
+	"connection_failed": regexp.MustCompile(`(?i)(connection refused|could not connect|no pg_hba\.conf entry)`),
+	"version_mismatch":  regexp.MustCompile(`(?i)(version mismatch|incompatible|unsupported version)`),
+}
 
 // ErrorClassification represents the severity and type of error
 type ErrorClassification struct {
@@ -15,11 +27,90 @@ type ErrorClassification struct {
 	Severity int    // 0=info, 1=warning, 2=error, 3=fatal
 }
 
+// classifyErrorByPattern uses compiled regex patterns for robust error classification
+func classifyErrorByPattern(msg string) string {
+	for category, pattern := range errorPatterns {
+		if pattern.MatchString(msg) {
+			return category
+		}
+	}
+	return "unknown"
+}
+
 // ClassifyError analyzes an error message and provides actionable hints
 func ClassifyError(errorMsg string) *ErrorClassification {
+	// Use regex pattern matching for robustness
+	patternMatch := classifyErrorByPattern(errorMsg)
 	lowerMsg := strings.ToLower(errorMsg)
 
-	// Ignorable errors (objects already exist)
+	// Use pattern matching first, fall back to string matching
+	switch patternMatch {
+	case "already_exists":
+		return &ErrorClassification{
+			Type:     "ignorable",
+			Category: "duplicate",
+			Message:  errorMsg,
+			Hint:     "Object already exists in target database - this is normal during restore",
+			Action:   "No action needed - restore will continue",
+			Severity: 0,
+		}
+	case "disk_full":
+		return &ErrorClassification{
+			Type:     "critical",
+			Category: "disk_space",
+			Message:  errorMsg,
+			Hint:     "Insufficient disk space to complete operation",
+			Action:   "Free up disk space: rm old_backups/* or increase storage",
+			Severity: 3,
+		}
+	case "lock_exhaustion":
+		return &ErrorClassification{
+			Type:     "critical",
+			Category: "locks",
+			Message:  errorMsg,
+			Hint:     "Lock table exhausted - typically caused by large objects in parallel restore",
+			Action:   "Increase max_locks_per_transaction in postgresql.conf to 512 or higher",
+			Severity: 2,
+		}
+	case "permission_denied":
+		return &ErrorClassification{
+			Type:     "critical",
+			Category: "permissions",
+			Message:  errorMsg,
+			Hint:     "Insufficient permissions to perform operation",
+			Action:   "Run as superuser or use --no-owner flag for restore",
+			Severity: 2,
+		}
+	case "connection_failed":
+		return &ErrorClassification{
+			Type:     "critical",
+			Category: "network",
+			Message:  errorMsg,
+			Hint:     "Cannot connect to database server",
+			Action:   "Check database is running and pg_hba.conf allows connection",
+			Severity: 2,
+		}
+	case "version_mismatch":
+		return &ErrorClassification{
+			Type:     "warning",
+			Category: "version",
+			Message:  errorMsg,
+			Hint:     "PostgreSQL version mismatch between backup and restore target",
+			Action:   "Review release notes for compatibility: https://www.postgresql.org/docs/",
+			Severity: 1,
+		}
+	case "syntax_error":
+		return &ErrorClassification{
+			Type:     "critical",
+			Category: "corruption",
+			Message:  errorMsg,
+			Hint:     "Syntax error in dump file - backup may be corrupted or incomplete",
+			Action:   "Re-create backup with: dbbackup backup single <database>",
+			Severity: 3,
+		}
+	}
+
+	// Fallback to original string matching for backward compatibility
 	if strings.Contains(lowerMsg, "already exists") {
 		return &ErrorClassification{
 			Type:     "ignorable",

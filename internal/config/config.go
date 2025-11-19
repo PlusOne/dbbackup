@@ -49,6 +49,10 @@ type Config struct {
 	Debug        bool
 	LogLevel     string
 	LogFormat    string
+	
+	// Config persistence
+	NoSaveConfig bool
+	NoLoadConfig bool
 	OutputLength int
 
 	// Single database backup/restore

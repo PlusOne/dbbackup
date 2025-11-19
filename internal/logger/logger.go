@@ -13,9 +13,13 @@ import (
 // Logger defines the interface for logging
 type Logger interface {
 	Debug(msg string, args ...any)
-	Info(msg string, args ...any)
-	Warn(msg string, args ...any)
-	Error(msg string, args ...any)
+	Info(msg string, keysAndValues ...interface{})
+	Warn(msg string, keysAndValues ...interface{})
+	Error(msg string, keysAndValues ...interface{})
+	
+	// Structured logging methods
+	WithFields(fields map[string]interface{}) Logger
+	WithField(key string, value interface{}) Logger
 	Time(msg string, args ...any)
 
 	// Progress logging for operations
@@ -109,15 +113,34 @@ func (l *logger) Error(msg string, args ...any) {
 }
 
 func (l *logger) Time(msg string, args ...any) {
-	// Time logs are always at info level with special formatting
+	// Time logs are always at info level with special formatting  
 	l.logWithFields(logrus.InfoLevel, "[TIME] "+msg, args...)
 }
 
+// StartOperation creates a new operation logger
 func (l *logger) StartOperation(name string) OperationLogger {
 	return &operationLogger{
 		name:      name,
 		startTime: time.Now(),
 		parent:    l,
+	}
+}
+
+// WithFields creates a logger with structured fields
+func (l *logger) WithFields(fields map[string]interface{}) Logger {
+	return &logger{
+		logrus: l.logrus.WithFields(logrus.Fields(fields)).Logger,
+		level:  l.level,
+		format: l.format,
+	}
+}
+
+// WithField creates a logger with a single structured field
+func (l *logger) WithField(key string, value interface{}) Logger {
+	return &logger{
+		logrus: l.logrus.WithField(key, value).Logger,
+		level:  l.level,
+		format: l.format,
 	}
 }
 

@@ -38,6 +38,17 @@ For help with specific commands, use: dbbackup [command] --help`,
 		if cfg == nil {
 			return nil
 		}
+		
+		// Load local config if not disabled
+		if !cfg.NoLoadConfig {
+			if localCfg, err := config.LoadLocalConfig(); err != nil {
+				log.Warn("Failed to load local config", "error", err)
+			} else if localCfg != nil {
+				config.ApplyLocalConfig(cfg, localCfg)
+				log.Info("Loaded configuration from .dbbackup.conf")
+			}
+		}
+		
 		return cfg.SetDatabaseType(cfg.DatabaseType)
 	},
 }
@@ -69,6 +80,8 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().StringVar(&cfg.SSLMode, "ssl-mode", cfg.SSLMode, "SSL mode for connections")
 	rootCmd.PersistentFlags().BoolVar(&cfg.Insecure, "insecure", cfg.Insecure, "Disable SSL (shortcut for --ssl-mode=disable)")
 	rootCmd.PersistentFlags().IntVar(&cfg.CompressionLevel, "compression", cfg.CompressionLevel, "Compression level (0-9)")
+	rootCmd.PersistentFlags().BoolVar(&cfg.NoSaveConfig, "no-save-config", false, "Don't save configuration after successful operations")
+	rootCmd.PersistentFlags().BoolVar(&cfg.NoLoadConfig, "no-config", false, "Don't load configuration from .dbbackup.conf")
 
 	return rootCmd.ExecuteContext(ctx)
 }

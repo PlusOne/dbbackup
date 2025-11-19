@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 	"dbbackup/cmd"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metrics"
 )
 
 // Build information (set by ldflags)
@@ -41,6 +43,20 @@ func main() {
 
 	// Initialize logger
 	log := logger.New(cfg.LogLevel, cfg.LogFormat)
+
+	// Initialize global metrics
+	metrics.InitGlobalMetrics(log)
+	
+	// Show session summary on exit
+	defer func() {
+		if metrics.GlobalMetrics != nil {
+			avgs := metrics.GlobalMetrics.GetAverages()
+			if ops, ok := avgs["total_operations"].(int); ok && ops > 0 {
+				fmt.Printf("\n📊 Session Summary: %d operations, %.1f%% success rate\n", 
+					ops, avgs["success_rate"])
+			}
+		}
+	}()
 
 	// Execute command
 	if err := cmd.Execute(ctx, cfg, log); err != nil {

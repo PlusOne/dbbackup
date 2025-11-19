@@ -20,6 +20,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metrics"
 	"dbbackup/internal/progress"
 	"dbbackup/internal/swap"
 )
@@ -202,6 +203,11 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 		metaStep.Complete("Metadata file created")
 	}
 	
+	// Record metrics for observability
+	if info, err := os.Stat(outputFile); err == nil && metrics.GlobalMetrics != nil {
+		metrics.GlobalMetrics.RecordOperation("backup_single", databaseName, time.Now().Add(-time.Minute), info.Size(), true, 0)
+	}
+	
 	// Complete operation
 	tracker.UpdateProgress(100, "Backup operation completed successfully")
 	tracker.Complete(fmt.Sprintf("Single database backup completed: %s", filepath.Base(outputFile)))
@@ -304,9 +310,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
 	
-	// Check disk space before starting backup
+	// Check disk space before starting backup (cached for performance)
 	e.log.Info("Checking disk space availability")
-	spaceCheck := checks.CheckDiskSpace(e.cfg.BackupDir)
+	spaceCheck := checks.CheckDiskSpaceCached(e.cfg.BackupDir)
 	
 	if !e.silent {
 		// Show disk space status in CLI mode

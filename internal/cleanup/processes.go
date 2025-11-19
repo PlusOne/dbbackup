@@ -4,15 +4,80 @@
 package cleanup
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"dbbackup/internal/logger"
 )
+
+// ProcessManager tracks and manages process lifecycle safely
+type ProcessManager struct {
+	mu        sync.RWMutex
+	processes map[int]*os.Process
+	ctx       context.Context
+	cancel    context.CancelFunc
+	log       logger.Logger
+}
+
+// NewProcessManager creates a new process manager
+func NewProcessManager(log logger.Logger) *ProcessManager {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &ProcessManager{
+		processes: make(map[int]*os.Process),
+		ctx:       ctx,
+		cancel:    cancel,
+		log:       log,
+	}
+}
+
+// Track adds a process to be managed
+func (pm *ProcessManager) Track(proc *os.Process) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.processes[proc.Pid] = proc
+	
+	// Auto-cleanup when process exits
+	go func() {
+		proc.Wait()
+		pm.mu.Lock()
+		delete(pm.processes, proc.Pid)
+		pm.mu.Unlock()
+	}()
+}
+
+// KillAll kills all tracked processes
+func (pm *ProcessManager) KillAll() error {
+	pm.mu.RLock()
+	procs := make([]*os.Process, 0, len(pm.processes))
+	for _, proc := range pm.processes {
+		procs = append(procs, proc)
+	}
+	pm.mu.RUnlock()
+	
+	var errors []error
+	for _, proc := range procs {
+		if err := proc.Kill(); err != nil {
+			errors = append(errors, err)
+		}
+	}
+	
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to kill %d processes: %v", len(errors), errors)
+	}
+	return nil
+}
+
+// Close cleans up the process manager
+func (pm *ProcessManager) Close() error {
+	pm.cancel()
+	return pm.KillAll()
+}
 
 // KillOrphanedProcesses finds and kills any orphaned pg_dump, pg_restore, gzip, or pigz processes
 func KillOrphanedProcesses(log logger.Logger) error {

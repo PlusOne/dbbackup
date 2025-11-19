@@ -252,6 +252,12 @@ func (s *SilentLogger) Time(msg string, args ...any)  {}
 func (s *SilentLogger) StartOperation(name string) logger.OperationLogger {
 	return &SilentOperation{}
 }
+func (s *SilentLogger) WithFields(fields map[string]interface{}) logger.Logger {
+	return s
+}
+func (s *SilentLogger) WithField(key string, value interface{}) logger.Logger {
+	return s
+}
 
 // SilentOperation implements logger.OperationLogger but doesn't output anything
 type SilentOperation struct{}
