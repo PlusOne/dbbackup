@@ -89,7 +89,7 @@ Menu-driven interface for all operations. Press arrow keys to navigate, Enter to
 ├─────────────────────────────────────────────┤
 │ Database: postgres@localhost:5432           │
 │ Type: PostgreSQL                            │
-│ Backup Dir: /var/lib/pgsql/db_backups      │
+│ Backup Dir: /var/lib/pgsql/db_backups       │
 └─────────────────────────────────────────────┘
 ```
 
