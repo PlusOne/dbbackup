@@ -77,7 +77,7 @@ func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m.onConfirm()
 				}
 				// Default: execute cluster backup for backward compatibility
-				executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, "cluster", "", 0)
+				executor := NewBackupExecution(m.config, m.logger, m.parent, "cluster", "", 0)
 				return executor, executor.Init()
 			}
 			return m.parent, nil
