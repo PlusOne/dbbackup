@@ -6,12 +6,14 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/security"
 	"github.com/spf13/cobra"
 )
 
 var (
-	cfg *config.Config
-	log logger.Logger
+	cfg         *config.Config
+	log         logger.Logger
+	auditLogger *security.AuditLogger
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -57,6 +59,9 @@ For help with specific commands, use: dbbackup [command] --help`,
 func Execute(ctx context.Context, config *config.Config, logger logger.Logger) error {
 	cfg = config
 	log = logger
+	
+	// Initialize audit logger
+	auditLogger = security.NewAuditLogger(logger, true)
 
 	// Set version info
 	rootCmd.Version = fmt.Sprintf("%s (built: %s, commit: %s)",

@@ -175,7 +175,8 @@ func SaveLocalConfig(cfg *LocalConfig) error {
 	}
 
 	configPath := filepath.Join(".", ConfigFileName)
-	if err := os.WriteFile(configPath, []byte(sb.String()), 0644); err != nil {
+	// Use 0600 permissions for security (readable/writable only by owner)
+	if err := os.WriteFile(configPath, []byte(sb.String()), 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

@@ -7,6 +7,7 @@ import (
 	"dbbackup/internal/backup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/security"
 )
 
 // runClusterBackup performs a full cluster backup
@@ -28,15 +29,21 @@ func runClusterBackup(ctx context.Context) error {
 		"port", cfg.Port,
 		"backup_dir", cfg.BackupDir)
 	
+	// Audit log: backup start
+	user := security.GetCurrentUser()
+	auditLogger.LogBackupStart(user, "all_databases", "cluster")
+	
 	// Create database instance
 	db, err := database.New(cfg, log)
 	if err != nil {
+		auditLogger.LogBackupFailed(user, "all_databases", err)
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
 	defer db.Close()
 	
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
+		auditLogger.LogBackupFailed(user, "all_databases", err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	
@@ -45,8 +52,12 @@ func runClusterBackup(ctx context.Context) error {
 	
 	// Perform cluster backup
 	if err := engine.BackupCluster(ctx); err != nil {
+		auditLogger.LogBackupFailed(user, "all_databases", err)
 		return err
 	}
+	
+	// Audit log: backup success
+	auditLogger.LogBackupComplete(user, "all_databases", cfg.BackupDir, 0)
 	
 	// Save configuration for future use (unless disabled)
 	if !cfg.NoSaveConfig {
@@ -55,6 +66,7 @@ func runClusterBackup(ctx context.Context) error {
 			log.Warn("Failed to save configuration", "error", err)
 		} else {
 			log.Info("Configuration saved to .dbbackup.conf")
+			auditLogger.LogConfigChange(user, "config_file", "", ".dbbackup.conf")
 		}
 	}
 	
@@ -78,25 +90,34 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		"port", cfg.Port,
 		"backup_dir", cfg.BackupDir)
 	
+	// Audit log: backup start
+	user := security.GetCurrentUser()
+	auditLogger.LogBackupStart(user, databaseName, "single")
+	
 	// Create database instance
 	db, err := database.New(cfg, log)
 	if err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
 	defer db.Close()
 	
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	
 	// Verify database exists
 	exists, err := db.DatabaseExists(ctx, databaseName)
 	if err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to check if database exists: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("database '%s' does not exist", databaseName)
+		err := fmt.Errorf("database '%s' does not exist", databaseName)
+		auditLogger.LogBackupFailed(user, databaseName, err)
+		return err
 	}
 	
 	// Create backup engine
@@ -104,8 +125,12 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	
 	// Perform single database backup
 	if err := engine.BackupSingle(ctx, databaseName); err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return err
 	}
+	
+	// Audit log: backup success
+	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, 0)
 	
 	// Save configuration for future use (unless disabled)
 	if !cfg.NoSaveConfig {
@@ -114,6 +139,7 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 			log.Warn("Failed to save configuration", "error", err)
 		} else {
 			log.Info("Configuration saved to .dbbackup.conf")
+			auditLogger.LogConfigChange(user, "config_file", "", ".dbbackup.conf")
 		}
 	}
 	
@@ -159,25 +185,34 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 		"port", cfg.Port,
 		"backup_dir", cfg.BackupDir)
 	
+	// Audit log: backup start
+	user := security.GetCurrentUser()
+	auditLogger.LogBackupStart(user, databaseName, "sample")
+	
 	// Create database instance
 	db, err := database.New(cfg, log)
 	if err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
 	defer db.Close()
 	
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	
 	// Verify database exists
 	exists, err := db.DatabaseExists(ctx, databaseName)
 	if err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to check if database exists: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("database '%s' does not exist", databaseName)
+		err := fmt.Errorf("database '%s' does not exist", databaseName)
+		auditLogger.LogBackupFailed(user, databaseName, err)
+		return err
 	}
 	
 	// Create backup engine
@@ -185,8 +220,12 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	
 	// Perform sample backup
 	if err := engine.BackupSample(ctx, databaseName); err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
 		return err
 	}
+	
+	// Audit log: backup success
+	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, 0)
 	
 	// Save configuration for future use (unless disabled)
 	if !cfg.NoSaveConfig {
@@ -195,6 +234,7 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 			log.Warn("Failed to save configuration", "error", err)
 		} else {
 			log.Info("Configuration saved to .dbbackup.conf")
+			auditLogger.LogConfigChange(user, "config_file", "", ".dbbackup.conf")
 		}
 	}
 	

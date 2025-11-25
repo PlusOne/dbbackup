@@ -19,6 +19,7 @@ import (
 	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/security"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metrics"
 	"dbbackup/internal/progress"
@@ -132,6 +133,16 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	
 	// Start preparing backup directory
 	prepStep := tracker.AddStep("prepare", "Preparing backup directory")
+	
+	// Validate and sanitize backup directory path
+	validBackupDir, err := security.ValidateBackupPath(e.cfg.BackupDir)
+	if err != nil {
+		prepStep.Fail(fmt.Errorf("invalid backup directory path: %w", err))
+		tracker.Fail(fmt.Errorf("invalid backup directory path: %w", err))
+		return fmt.Errorf("invalid backup directory path: %w", err)
+	}
+	e.cfg.BackupDir = validBackupDir
+	
 	if err := os.MkdirAll(e.cfg.BackupDir, 0755); err != nil {
 		prepStep.Fail(fmt.Errorf("failed to create backup directory: %w", err))
 		tracker.Fail(fmt.Errorf("failed to create backup directory: %w", err))
@@ -192,6 +203,20 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 		tracker.SetByteProgress(info.Size(), info.Size())
 		verifyStep.Complete(fmt.Sprintf("Backup file verified: %s", size))
 		tracker.UpdateProgress(90, fmt.Sprintf("Backup verified: %s", size))
+	}
+	
+	// Calculate and save checksum
+	checksumStep := tracker.AddStep("checksum", "Calculating SHA-256 checksum")
+	if checksum, err := security.ChecksumFile(outputFile); err != nil {
+		e.log.Warn("Failed to calculate checksum", "error", err)
+		checksumStep.Fail(fmt.Errorf("checksum calculation failed: %w", err))
+	} else {
+		if err := security.SaveChecksum(outputFile, checksum); err != nil {
+			e.log.Warn("Failed to save checksum", "error", err)
+		} else {
+			checksumStep.Complete(fmt.Sprintf("Checksum: %s", checksum[:16]+"..."))
+			e.log.Info("Backup checksum", "sha256", checksum)
+		}
 	}
 	
 	// Create metadata file

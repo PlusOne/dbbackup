@@ -12,6 +12,7 @@ import (
 
 	"dbbackup/internal/database"
 	"dbbackup/internal/restore"
+	"dbbackup/internal/security"
 
 	"github.com/spf13/cobra"
 )
@@ -272,10 +273,19 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Execute restore
 	log.Info("Starting restore...", "database", targetDB)
+	
+	// Audit log: restore start
+	user := security.GetCurrentUser()
+	startTime := time.Now()
+	auditLogger.LogRestoreStart(user, targetDB, archivePath)
 
 	if err := engine.RestoreSingle(ctx, archivePath, targetDB, restoreClean, restoreCreate); err != nil {
+		auditLogger.LogRestoreFailed(user, targetDB, err)
 		return fmt.Errorf("restore failed: %w", err)
 	}
+	
+	// Audit log: restore success
+	auditLogger.LogRestoreComplete(user, targetDB, time.Since(startTime))
 
 	log.Info("✅ Restore completed successfully", "database", targetDB)
 	return nil
@@ -368,10 +378,19 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	// Execute cluster restore
 	log.Info("Starting cluster restore...")
+	
+	// Audit log: restore start
+	user := security.GetCurrentUser()
+	startTime := time.Now()
+	auditLogger.LogRestoreStart(user, "all_databases", archivePath)
 
 	if err := engine.RestoreCluster(ctx, archivePath); err != nil {
+		auditLogger.LogRestoreFailed(user, "all_databases", err)
 		return fmt.Errorf("cluster restore failed: %w", err)
 	}
+	
+	// Audit log: restore success
+	auditLogger.LogRestoreComplete(user, "all_databases", time.Since(startTime))
 
 	log.Info("✅ Cluster restore completed successfully")
 	return nil

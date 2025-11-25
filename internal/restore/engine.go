@@ -16,6 +16,7 @@ import (
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
+	"dbbackup/internal/security"
 )
 
 // Engine handles database restore operations
@@ -101,10 +102,26 @@ func (la *loggerAdapter) Debug(msg string, args ...any) {
 func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string, cleanFirst, createIfMissing bool) error {
 	operation := e.log.StartOperation("Single Database Restore")
 
+	// Validate and sanitize archive path
+	validArchivePath, pathErr := security.ValidateArchivePath(archivePath)
+	if pathErr != nil {
+		operation.Fail(fmt.Sprintf("Invalid archive path: %v", pathErr))
+		return fmt.Errorf("invalid archive path: %w", pathErr)
+	}
+	archivePath = validArchivePath
+
 	// Validate archive exists
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
 		operation.Fail("Archive not found")
 		return fmt.Errorf("archive not found: %s", archivePath)
+	}
+
+	// Verify checksum if .sha256 file exists
+	if checksumErr := security.LoadAndVerifyChecksum(archivePath); checksumErr != nil {
+		e.log.Warn("Checksum verification failed", "error", checksumErr)
+		e.log.Warn("Continuing restore without checksum verification (use with caution)")
+	} else {
+		e.log.Info("✓ Archive checksum verified successfully")
 	}
 
 	// Detect archive format
@@ -486,10 +503,26 @@ func (e *Engine) previewRestore(archivePath, targetDB string, format ArchiveForm
 func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	operation := e.log.StartOperation("Cluster Restore")
 
-	// Validate archive
+	// Validate and sanitize archive path
+	validArchivePath, pathErr := security.ValidateArchivePath(archivePath)
+	if pathErr != nil {
+		operation.Fail(fmt.Sprintf("Invalid archive path: %v", pathErr))
+		return fmt.Errorf("invalid archive path: %w", pathErr)
+	}
+	archivePath = validArchivePath
+
+	// Validate archive exists
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
 		operation.Fail("Archive not found")
 		return fmt.Errorf("archive not found: %s", archivePath)
+	}
+
+	// Verify checksum if .sha256 file exists
+	if checksumErr := security.LoadAndVerifyChecksum(archivePath); checksumErr != nil {
+		e.log.Warn("Checksum verification failed", "error", checksumErr)
+		e.log.Warn("Continuing restore without checksum verification (use with caution)")
+	} else {
+		e.log.Info("✓ Cluster archive checksum verified successfully")
 	}
 
 	format := DetectArchiveFormat(archivePath)
