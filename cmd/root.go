@@ -8,6 +8,7 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/security"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -42,13 +43,64 @@ For help with specific commands, use: dbbackup [command] --help`,
 			return nil
 		}
 		
+		// Store which flags were explicitly set by user
+		flagsSet := make(map[string]bool)
+		cmd.Flags().Visit(func(f *pflag.Flag) {
+			flagsSet[f.Name] = true
+		})
+		
 		// Load local config if not disabled
 		if !cfg.NoLoadConfig {
 			if localCfg, err := config.LoadLocalConfig(); err != nil {
 				log.Warn("Failed to load local config", "error", err)
 			} else if localCfg != nil {
+				// Save current flag values that were explicitly set
+				savedBackupDir := cfg.BackupDir
+				savedHost := cfg.Host
+				savedPort := cfg.Port
+				savedUser := cfg.User
+				savedDatabase := cfg.Database
+				savedCompression := cfg.CompressionLevel
+				savedJobs := cfg.Jobs
+				savedDumpJobs := cfg.DumpJobs
+				savedRetentionDays := cfg.RetentionDays
+				savedMinBackups := cfg.MinBackups
+				
+				// Apply config from file
 				config.ApplyLocalConfig(cfg, localCfg)
 				log.Info("Loaded configuration from .dbbackup.conf")
+				
+				// Restore explicitly set flag values (flags have priority)
+				if flagsSet["backup-dir"] {
+					cfg.BackupDir = savedBackupDir
+				}
+				if flagsSet["host"] {
+					cfg.Host = savedHost
+				}
+				if flagsSet["port"] {
+					cfg.Port = savedPort
+				}
+				if flagsSet["user"] {
+					cfg.User = savedUser
+				}
+				if flagsSet["database"] {
+					cfg.Database = savedDatabase
+				}
+				if flagsSet["compression"] {
+					cfg.CompressionLevel = savedCompression
+				}
+				if flagsSet["jobs"] {
+					cfg.Jobs = savedJobs
+				}
+				if flagsSet["dump-jobs"] {
+					cfg.DumpJobs = savedDumpJobs
+				}
+				if flagsSet["retention-days"] {
+					cfg.RetentionDays = savedRetentionDays
+				}
+				if flagsSet["min-backups"] {
+					cfg.MinBackups = savedMinBackups
+				}
 			}
 		}
 		
