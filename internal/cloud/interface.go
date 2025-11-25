@@ -79,8 +79,12 @@ func NewBackend(cfg *Config) (Backend, error) {
 			return nil, fmt.Errorf("endpoint required for Backblaze B2")
 		}
 		return NewS3Backend(cfg)
+	case "azure", "azblob":
+		return NewAzureBackend(cfg)
+	case "gs", "gcs", "google":
+		return NewGCSBackend(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported cloud provider: %s (supported: s3, minio, b2)", cfg.Provider)
+		return nil, fmt.Errorf("unsupported cloud provider: %s (supported: s3, minio, b2, azure, gcs)", cfg.Provider)
 	}
 }
 

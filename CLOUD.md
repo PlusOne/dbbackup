@@ -8,7 +8,8 @@ dbbackup v2.0 includes comprehensive cloud storage integration, allowing you to 
 - AWS S3
 - MinIO (self-hosted S3-compatible)
 - Backblaze B2
-- Google Cloud Storage (via S3 compatibility)
+- **Azure Blob Storage** (native support)
+- **Google Cloud Storage** (native support)
 - Any S3-compatible storage
 
 **Key Features:**
@@ -83,8 +84,8 @@ Cloud URIs follow this format:
 - `s3://` - AWS S3 or S3-compatible storage
 - `minio://` - MinIO (auto-enables path-style addressing)
 - `b2://` - Backblaze B2
-- `gs://` or `gcs://` - Google Cloud Storage
-- `azure://` - Azure Blob Storage (coming soon)
+- `gs://` or `gcs://` - Google Cloud Storage (native support)
+- `azure://` or `azblob://` - Azure Blob Storage (native support)
 
 **Examples:**
 ```bash
@@ -381,25 +382,67 @@ export AWS_REGION="us-west-002"
 dbbackup backup single mydb --cloud b2://my-bucket/backups/
 ```
 
+### Azure Blob Storage
+
+**Native Azure support with comprehensive features:**
+
+See **[AZURE.md](AZURE.md)** for complete documentation.
+
+**Quick Start:**
+```bash
+# Using account name and key
+dbbackup backup postgres \
+  --host localhost \
+  --database mydb \
+  --cloud "azure://container/backups/db.sql?account=myaccount&key=ACCOUNT_KEY"
+
+# With Azurite emulator for testing
+dbbackup backup postgres \
+  --host localhost \
+  --database mydb \
+  --cloud "azure://test-backups/db.sql?endpoint=http://localhost:10000"
+```
+
+**Features:**
+- Native Azure SDK integration
+- Block blob upload for large files (>256MB)
+- Azurite emulator support for local testing
+- SHA-256 integrity verification
+- Comprehensive test suite
+
 ### Google Cloud Storage
 
-**Prerequisites:**
-- GCP account
-- GCS bucket with S3 compatibility enabled
-- HMAC keys generated
+**Native GCS support with full features:**
 
-**Enable S3 Compatibility:**
-1. Go to Cloud Storage > Settings > Interoperability
-2. Create HMAC keys
+See **[GCS.md](GCS.md)** for complete documentation.
 
-**Configuration:**
+**Quick Start:**
 ```bash
-export AWS_ACCESS_KEY_ID="<your-hmac-access-id>"
-export AWS_SECRET_ACCESS_KEY="<your-hmac-secret>"
-export AWS_ENDPOINT_URL="https://storage.googleapis.com"
+# Using Application Default Credentials
+dbbackup backup postgres \
+  --host localhost \
+  --database mydb \
+  --cloud "gs://mybucket/backups/db.sql"
 
-dbbackup backup single mydb --cloud gs://my-bucket/backups/
+# With service account
+dbbackup backup postgres \
+  --host localhost \
+  --database mydb \
+  --cloud "gs://mybucket/backups/db.sql?credentials=/path/to/key.json"
+
+# With fake-gcs-server emulator for testing
+dbbackup backup postgres \
+  --host localhost \
+  --database mydb \
+  --cloud "gs://test-backups/db.sql?endpoint=http://localhost:4443/storage/v1"
 ```
+
+**Features:**
+- Native GCS SDK integration
+- Chunked upload for large files (16MB chunks)
+- fake-gcs-server emulator support
+- Application Default Credentials support
+- Workload Identity for GKE
 
 ---
 
@@ -727,6 +770,8 @@ A: No, backups are downloaded to temp directory, then restored and cleaned up.
 **Q: How much does cloud storage cost?**  
 A: Varies by provider:
 - AWS S3: ~$0.023/GB/month + transfer
+- Azure Blob Storage: ~$0.018/GB/month (Hot tier)
+- Google Cloud Storage: ~$0.020/GB/month (Standard)
 - Backblaze B2: ~$0.005/GB/month + transfer
 - MinIO: Self-hosted, hardware costs only
 
@@ -744,9 +789,15 @@ A: Yes, but restore requires thawing. Use lifecycle policies for automatic archi
 ## Related Documentation
 
 - [README.md](README.md) - Main documentation
+- [AZURE.md](AZURE.md) - **Azure Blob Storage guide** (comprehensive)
+- [GCS.md](GCS.md) - **Google Cloud Storage guide** (comprehensive)
 - [ROADMAP.md](ROADMAP.md) - Feature roadmap
 - [docker-compose.minio.yml](docker-compose.minio.yml) - MinIO test setup
-- [scripts/test_cloud_storage.sh](scripts/test_cloud_storage.sh) - Integration tests
+- [docker-compose.azurite.yml](docker-compose.azurite.yml) - Azure Azurite test setup
+- [docker-compose.gcs.yml](docker-compose.gcs.yml) - GCS fake-gcs-server test setup
+- [scripts/test_cloud_storage.sh](scripts/test_cloud_storage.sh) - S3 integration tests
+- [scripts/test_azure_storage.sh](scripts/test_azure_storage.sh) - Azure integration tests
+- [scripts/test_gcs_storage.sh](scripts/test_gcs_storage.sh) - GCS integration tests
 
 ---
 

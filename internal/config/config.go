@@ -88,13 +88,13 @@ type Config struct {
 
 	// Cloud storage options (v2.0)
 	CloudEnabled    bool   // Enable cloud storage integration
-	CloudProvider   string // "s3", "minio", "b2"
-	CloudBucket     string // Bucket name
-	CloudRegion     string // Region (for S3)
-	CloudEndpoint   string // Custom endpoint (for MinIO, B2)
-	CloudAccessKey  string // Access key
-	CloudSecretKey  string // Secret key
-	CloudPrefix     string // Key prefix
+	CloudProvider   string // "s3", "minio", "b2", "azure", "gcs"
+	CloudBucket     string // Bucket/container name
+	CloudRegion     string // Region (for S3, GCS)
+	CloudEndpoint   string // Custom endpoint (for MinIO, B2, Azurite, fake-gcs-server)
+	CloudAccessKey  string // Access key / Account name (Azure) / Service account file (GCS)
+	CloudSecretKey  string // Secret key / Account key (Azure)
+	CloudPrefix     string // Key/object prefix
 	CloudAutoUpload bool   // Automatically upload after backup
 }
 
