@@ -1,5 +1,5 @@
-//go:build openbsd || netbsd
-// +build openbsd netbsd
+//go:build openbsd
+// +build openbsd
 
 package checks
 

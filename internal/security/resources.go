@@ -3,7 +3,6 @@ package security
 import (
 	"fmt"
 	"runtime"
-	"syscall"
 
 	"dbbackup/internal/logger"
 )
@@ -31,84 +30,9 @@ type ResourceLimits struct {
 }
 
 // CheckResourceLimits checks and reports system resource limits
+// Platform-specific implementation is in resources_unix.go and resources_windows.go
 func (rc *ResourceChecker) CheckResourceLimits() (*ResourceLimits, error) {
-	if runtime.GOOS == "windows" {
-		return rc.checkWindowsLimits()
-	}
-	return rc.checkUnixLimits()
-}
-
-// checkUnixLimits checks resource limits on Unix-like systems
-func (rc *ResourceChecker) checkUnixLimits() (*ResourceLimits, error) {
-	limits := &ResourceLimits{
-		Available: true,
-		Platform:  runtime.GOOS,
-	}
-
-	// Check max open files (RLIMIT_NOFILE)
-	var rLimit syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err == nil {
-		limits.MaxOpenFiles = rLimit.Cur
-		rc.log.Debug("Resource limit: max open files", "limit", rLimit.Cur, "max", rLimit.Max)
-		
-		if rLimit.Cur < 1024 {
-			rc.log.Warn("⚠️  Low file descriptor limit detected",
-				"current", rLimit.Cur,
-				"recommended", 4096,
-				"hint", "Increase with: ulimit -n 4096")
-		}
-	}
-
-	// Check max processes (RLIMIT_NPROC) - Linux/BSD only
-	if runtime.GOOS == "linux" || runtime.GOOS == "freebsd" || runtime.GOOS == "openbsd" {
-		// RLIMIT_NPROC may not be available on all platforms
-		const RLIMIT_NPROC = 6 // Linux value
-		if err := syscall.Getrlimit(RLIMIT_NPROC, &rLimit); err == nil {
-			limits.MaxProcesses = rLimit.Cur
-			rc.log.Debug("Resource limit: max processes", "limit", rLimit.Cur)
-		}
-	}
-
-	// Check max memory (RLIMIT_AS - address space)
-	if err := syscall.Getrlimit(syscall.RLIMIT_AS, &rLimit); err == nil {
-		limits.MaxAddressSpace = rLimit.Cur
-		// Check if unlimited (max value indicates unlimited)
-		if rLimit.Cur < ^uint64(0)-1024 {
-			rc.log.Debug("Resource limit: max address space", "limit_mb", rLimit.Cur/1024/1024)
-		}
-	}
-
-	// Check available memory
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	limits.MaxMemory = memStats.Sys
-
-	rc.log.Debug("Memory stats",
-		"alloc_mb", memStats.Alloc/1024/1024,
-		"sys_mb", memStats.Sys/1024/1024,
-		"num_gc", memStats.NumGC)
-
-	return limits, nil
-}
-
-// checkWindowsLimits checks resource limits on Windows
-func (rc *ResourceChecker) checkWindowsLimits() (*ResourceLimits, error) {
-	limits := &ResourceLimits{
-		Available:    true,
-		Platform:     "windows",
-		MaxOpenFiles: 2048, // Windows default
-	}
-
-	// Get memory stats
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	limits.MaxMemory = memStats.Sys
-
-	rc.log.Debug("Windows memory stats",
-		"alloc_mb", memStats.Alloc/1024/1024,
-		"sys_mb", memStats.Sys/1024/1024)
-
-	return limits, nil
+	return rc.checkPlatformLimits()
 }
 
 // ValidateResourcesForBackup validates resources are sufficient for backup operation
