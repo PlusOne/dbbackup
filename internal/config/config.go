@@ -75,6 +75,16 @@ type Config struct {
 	MaxRetries     int  // Maximum connection retry attempts
 	AllowRoot      bool // Allow running as root/Administrator
 	CheckResources bool // Check resource limits before operations
+
+	// TUI automation options (for testing)
+	TUIAutoSelect   int    // Auto-select menu option (-1 = disabled)
+	TUIAutoDatabase string // Pre-fill database name
+	TUIAutoHost     string // Pre-fill host
+	TUIAutoPort     int    // Pre-fill port
+	TUIAutoConfirm  bool   // Auto-confirm all prompts
+	TUIDryRun       bool   // TUI dry-run mode (simulate without execution)
+	TUIVerbose      bool   // Verbose TUI logging
+	TUILogFile      string // TUI event log file path
 }
 
 // New creates a new configuration with default values
@@ -172,6 +182,16 @@ func New() *Config {
 		MaxRetries:     getEnvInt("MAX_RETRIES", 3),            // Maximum 3 retry attempts
 		AllowRoot:      getEnvBool("ALLOW_ROOT", false),        // Disallow root by default
 		CheckResources: getEnvBool("CHECK_RESOURCES", true),    // Check resources by default
+
+		// TUI automation defaults (for testing)
+		TUIAutoSelect:   getEnvInt("TUI_AUTO_SELECT", -1),      // -1 = disabled
+		TUIAutoDatabase: getEnvString("TUI_AUTO_DATABASE", ""), // Empty = manual input
+		TUIAutoHost:     getEnvString("TUI_AUTO_HOST", ""),     // Empty = use default
+		TUIAutoPort:     getEnvInt("TUI_AUTO_PORT", 0),         // 0 = use default
+		TUIAutoConfirm:  getEnvBool("TUI_AUTO_CONFIRM", false), // Manual confirm by default
+		TUIDryRun:       getEnvBool("TUI_DRY_RUN", false),      // Execute by default
+		TUIVerbose:      getEnvBool("TUI_VERBOSE", false),      // Quiet by default
+		TUILogFile:      getEnvString("TUI_LOG_FILE", ""),      // No log file by default
 	}
 
 	// Ensure canonical defaults are enforced

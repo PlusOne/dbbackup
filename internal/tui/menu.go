@@ -125,14 +125,66 @@ func (m *MenuModel) Close() error {
 // Ensure MenuModel implements io.Closer
 var _ io.Closer = (*MenuModel)(nil)
 
+// autoSelectMsg is sent when auto-select should trigger
+type autoSelectMsg struct{}
+
 // Init initializes the model
 func (m MenuModel) Init() tea.Cmd {
+	// Auto-select menu option if specified
+	if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
+		m.logger.Info("TUI Auto-select enabled", "option", m.config.TUIAutoSelect, "label", m.choices[m.config.TUIAutoSelect])
+		
+		// Return command to trigger auto-selection
+		return func() tea.Msg {
+			return autoSelectMsg{}
+		}
+	}
 	return nil
 }
 
 // Update handles messages
 func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case autoSelectMsg:
+		// Handle auto-selection
+		if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
+			m.cursor = m.config.TUIAutoSelect
+			m.logger.Info("Auto-selecting option", "cursor", m.cursor, "choice", m.choices[m.cursor])
+			
+			// Trigger the selection based on cursor position
+			switch m.cursor {
+			case 0: // Single Database Backup
+				return m.handleSingleBackup()
+			case 1: // Sample Database Backup
+				return m.handleSampleBackup()
+			case 2: // Cluster Backup
+				return m.handleClusterBackup()
+			case 4: // Restore Single Database
+				return m.handleRestoreSingle()
+			case 5: // Restore Cluster Backup
+				return m.handleRestoreCluster()
+			case 6: // List & Manage Backups
+				return m.handleBackupManager()
+			case 8: // View Active Operations
+				return m.handleViewOperations()
+			case 9: // Show Operation History
+				return m.handleOperationHistory()
+			case 10: // Database Status
+				return m.handleStatus()
+			case 11: // Settings
+				return m.handleSettings()
+			case 12: // Clear History
+				m.message = "🗑️ History cleared"
+			case 13: // Quit
+				if m.cancel != nil {
+					m.cancel()
+				}
+				m.quitting = true
+				return m, tea.Quit
+			}
+		}
+		return m, nil
+	
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":

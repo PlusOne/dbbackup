@@ -44,9 +44,27 @@ var listCmd = &cobra.Command{
 var interactiveCmd = &cobra.Command{
 	Use:     "interactive",
 	Short:   "Start interactive menu mode",
-	Long:    `Start the interactive menu system for guided backup operations.`,
+	Long:    `Start the interactive menu system for guided backup operations.
+
+TUI Automation Flags (for testing and CI/CD):
+  --auto-select <index>     Automatically select menu option (0-13)
+  --auto-database <name>    Pre-fill database name in prompts
+  --auto-confirm            Auto-confirm all prompts (no user interaction)
+  --dry-run                 Simulate operations without execution
+  --verbose-tui             Enable detailed TUI event logging
+  --tui-log-file <path>     Write TUI events to log file`,
 	Aliases: []string{"menu", "ui"},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Parse TUI automation flags into config
+		cfg.TUIAutoSelect, _ = cmd.Flags().GetInt("auto-select")
+		cfg.TUIAutoDatabase, _ = cmd.Flags().GetString("auto-database")
+		cfg.TUIAutoHost, _ = cmd.Flags().GetString("auto-host")
+		cfg.TUIAutoPort, _ = cmd.Flags().GetInt("auto-port")
+		cfg.TUIAutoConfirm, _ = cmd.Flags().GetBool("auto-confirm")
+		cfg.TUIDryRun, _ = cmd.Flags().GetBool("dry-run")
+		cfg.TUIVerbose, _ = cmd.Flags().GetBool("verbose-tui")
+		cfg.TUILogFile, _ = cmd.Flags().GetString("tui-log-file")
+		
 		// Check authentication before starting TUI
 		if cfg.IsPostgreSQL() {
 			if mismatch, msg := auth.CheckAuthenticationMismatch(cfg); mismatch {
@@ -55,10 +73,29 @@ var interactiveCmd = &cobra.Command{
 			}
 		}
 		
-		// Start the interactive TUI with silent logger to prevent console output conflicts
-		silentLog := logger.NewSilent()
-		return tui.RunInteractiveMenu(cfg, silentLog)
+		// Use verbose logger if TUI verbose mode enabled
+		var interactiveLog logger.Logger
+		if cfg.TUIVerbose {
+			interactiveLog = log
+		} else {
+			interactiveLog = logger.NewSilent()
+		}
+		
+		// Start the interactive TUI
+		return tui.RunInteractiveMenu(cfg, interactiveLog)
 	},
+}
+
+func init() {
+	// TUI automation flags (for testing and automation)
+	interactiveCmd.Flags().Int("auto-select", -1, "Auto-select menu option (0-13, -1=disabled)")
+	interactiveCmd.Flags().String("auto-database", "", "Pre-fill database name")
+	interactiveCmd.Flags().String("auto-host", "", "Pre-fill host")
+	interactiveCmd.Flags().Int("auto-port", 0, "Pre-fill port (0=use default)")
+	interactiveCmd.Flags().Bool("auto-confirm", false, "Auto-confirm all prompts")
+	interactiveCmd.Flags().Bool("dry-run", false, "Simulate operations without execution")
+	interactiveCmd.Flags().Bool("verbose-tui", false, "Enable verbose TUI logging")
+	interactiveCmd.Flags().String("tui-log-file", "", "Write TUI events to file")
 }
 
 var preflightCmd = &cobra.Command{

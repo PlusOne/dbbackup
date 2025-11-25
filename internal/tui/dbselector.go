@@ -84,6 +84,37 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.databases = []string{"Error loading databases"}
 		} else {
 			m.databases = msg.databases
+			
+			// Auto-select database if specified
+			if m.config.TUIAutoDatabase != "" {
+				for i, db := range m.databases {
+					if db == m.config.TUIAutoDatabase {
+						m.cursor = i
+						m.selected = db
+						m.logger.Info("Auto-selected database", "database", db)
+						
+						// If sample backup, ask for ratio (or auto-use default)
+						if m.backupType == "sample" {
+							if m.config.TUIDryRun {
+								// In dry-run, use default ratio
+								executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, m.backupType, m.selected, 10)
+								return executor, executor.Init()
+							}
+							inputModel := NewInputModel(m.config, m.logger, m,
+								"📊 Sample Ratio",
+								"Enter sample ratio (1-100):",
+								"10",
+								ValidateInt(1, 100))
+							return inputModel, nil
+						}
+						
+						// For single backup, go directly to execution
+						executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, m.backupType, m.selected, 0)
+						return executor, executor.Init()
+					}
+				}
+				m.logger.Warn("Auto-database not found in list", "requested", m.config.TUIAutoDatabase)
+			}
 		}
 		return m, nil
 
