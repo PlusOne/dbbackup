@@ -1,0 +1,129 @@
+#!/usr/bin/expect -f
+# Automated TUI testing for dbbackup interactive mode
+
+set timeout 10
+set test_dir "/tmp/dbbackup_tui_test"
+set backup_dir "$test_dir/backups"
+
+# Test counter
+set tests_passed 0
+set tests_failed 0
+
+proc test_result {name result} {
+    global tests_passed tests_failed
+    if {$result == 0} {
+        puts "✅ PASSED: $name"
+        incr tests_passed
+    } else {
+        puts "❌ FAILED: $name"
+        incr tests_failed
+    }
+}
+
+puts "=== TUI Automated Testing with Expect ==="
+puts ""
+
+# Setup test environment
+puts "Setting up test environment..."
+exec rm -rf $test_dir
+exec mkdir -p $backup_dir
+exec cp /root/dbbackup/dbbackup $test_dir/
+exec chown -R postgres:postgres $test_dir
+puts "✓ Environment ready"
+puts ""
+
+# ==============================================================================
+# TEST 8: TUI Auto-Select Single Backup
+# ==============================================================================
+puts "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+puts "TEST 8: TUI Auto-Select Single Backup"
+puts "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+spawn su - postgres -c "cd $test_dir && ./dbbackup interactive --auto-select 0 --auto-database postgres"
+
+set test8_result 1
+expect {
+    -re "(Auto-select|selected|backup)" {
+        set test8_result 0
+    }
+    timeout {
+        puts "TIMEOUT waiting for auto-select"
+        set test8_result 1
+    }
+    eof {
+        # Check if backup file was created
+        if {[file exists $backup_dir/db_postgres_*.dump]} {
+            set test8_result 0
+        }
+    }
+}
+
+# Wait for process to complete
+sleep 2
+catch {close}
+catch {wait}
+
+test_result "TUI Auto-Select Single Backup" $test8_result
+puts ""
+
+# ==============================================================================
+# TEST 10: TUI Auto-Select with Logging
+# ==============================================================================
+puts "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+puts "TEST 10: TUI Auto-Select with Logging"
+puts "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+set logfile "$test_dir/tui_test.log"
+spawn su - postgres -c "cd $test_dir && ./dbbackup interactive --auto-select 0 --auto-database postgres --log-file $logfile"
+
+set test10_result 1
+expect {
+    -re "(Auto-select|selected|backup|log)" {
+        set test10_result 0
+    }
+    timeout {
+        puts "TIMEOUT waiting for auto-select with logging"
+        set test10_result 1
+    }
+    eof {
+        # Check if log file was created
+        if {[file exists $logfile]} {
+            set test10_result 0
+        }
+    }
+}
+
+sleep 2
+catch {close}
+catch {wait}
+
+# Verify log file exists
+if {[file exists $logfile]} {
+    puts "Log file created: $logfile"
+    set test10_result 0
+} else {
+    puts "Log file NOT created"
+    set test10_result 1
+}
+
+test_result "TUI Auto-Select with Logging" $test10_result
+puts ""
+
+# ==============================================================================
+# Summary
+# ==============================================================================
+puts "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+puts "TEST SUMMARY"
+puts "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+puts "Total Tests:  2"
+puts "Passed:       $tests_passed"
+puts "Failed:       $tests_failed"
+puts ""
+
+if {$tests_failed == 0} {
+    puts "✅ ALL TUI TESTS PASSED"
+    exit 0
+} else {
+    puts "❌ SOME TUI TESTS FAILED"
+    exit 1
+}
