@@ -90,6 +90,57 @@ func init() {
 	backupCmd.AddCommand(singleCmd)
 	backupCmd.AddCommand(sampleCmd)
 	
+	// Cloud storage flags for all backup commands
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().Bool("cloud-auto-upload", false, "Automatically upload backup to cloud after completion")
+		cmd.Flags().String("cloud-provider", "", "Cloud provider (s3, minio, b2)")
+		cmd.Flags().String("cloud-bucket", "", "Cloud bucket name")
+		cmd.Flags().String("cloud-region", "us-east-1", "Cloud region")
+		cmd.Flags().String("cloud-endpoint", "", "Cloud endpoint (for MinIO/B2)")
+		cmd.Flags().String("cloud-prefix", "", "Cloud key prefix")
+		
+		// Add PreRunE to update config from flags
+		originalPreRun := cmd.PreRunE
+		cmd.PreRunE = func(c *cobra.Command, args []string) error {
+			// Call original PreRunE if exists
+			if originalPreRun != nil {
+				if err := originalPreRun(c, args); err != nil {
+					return err
+				}
+			}
+			
+			// Update cloud config from flags
+			if c.Flags().Changed("cloud-auto-upload") {
+				if autoUpload, _ := c.Flags().GetBool("cloud-auto-upload"); autoUpload {
+					cfg.CloudEnabled = true
+					cfg.CloudAutoUpload = true
+				}
+			}
+			
+			if c.Flags().Changed("cloud-provider") {
+				cfg.CloudProvider, _ = c.Flags().GetString("cloud-provider")
+			}
+			
+			if c.Flags().Changed("cloud-bucket") {
+				cfg.CloudBucket, _ = c.Flags().GetString("cloud-bucket")
+			}
+			
+			if c.Flags().Changed("cloud-region") {
+				cfg.CloudRegion, _ = c.Flags().GetString("cloud-region")
+			}
+			
+			if c.Flags().Changed("cloud-endpoint") {
+				cfg.CloudEndpoint, _ = c.Flags().GetString("cloud-endpoint")
+			}
+			
+			if c.Flags().Changed("cloud-prefix") {
+				cfg.CloudPrefix, _ = c.Flags().GetString("cloud-prefix")
+			}
+			
+			return nil
+		}
+	}
+	
 	// Sample backup flags - use local variables to avoid cfg access during init
 	var sampleStrategy string
 	var sampleValue int

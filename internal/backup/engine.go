@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"dbbackup/internal/checks"
+	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/security"
@@ -232,6 +233,14 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	// Record metrics for observability
 	if info, err := os.Stat(outputFile); err == nil && metrics.GlobalMetrics != nil {
 		metrics.GlobalMetrics.RecordOperation("backup_single", databaseName, time.Now().Add(-time.Minute), info.Size(), true, 0)
+	}
+	
+	// Cloud upload if enabled
+	if e.cfg.CloudEnabled && e.cfg.CloudAutoUpload {
+		if err := e.uploadToCloud(ctx, outputFile, tracker); err != nil {
+			e.log.Warn("Cloud upload failed", "error", err)
+			// Don't fail the backup if cloud upload fails
+		}
 	}
 	
 	// Complete operation
@@ -1076,6 +1085,74 @@ func (e *Engine) createClusterMetadata(backupFile string, databases []string, su
 	if err := os.WriteFile(legacyMetaFile, []byte(legacyContent), 0644); err != nil {
 		e.log.Warn("Failed to save legacy cluster metadata file", "error", err)
 	}
+	
+	return nil
+}
+
+// uploadToCloud uploads a backup file to cloud storage
+func (e *Engine) uploadToCloud(ctx context.Context, backupFile string, tracker *progress.OperationTracker) error {
+	uploadStep := tracker.AddStep("cloud_upload", "Uploading to cloud storage")
+	
+	// Create cloud backend
+	cloudCfg := &cloud.Config{
+		Provider:   e.cfg.CloudProvider,
+		Bucket:     e.cfg.CloudBucket,
+		Region:     e.cfg.CloudRegion,
+		Endpoint:   e.cfg.CloudEndpoint,
+		AccessKey:  e.cfg.CloudAccessKey,
+		SecretKey:  e.cfg.CloudSecretKey,
+		Prefix:     e.cfg.CloudPrefix,
+		UseSSL:     true,
+		PathStyle:  e.cfg.CloudProvider == "minio",
+		Timeout:    300,
+		MaxRetries: 3,
+	}
+	
+	backend, err := cloud.NewBackend(cloudCfg)
+	if err != nil {
+		uploadStep.Fail(fmt.Errorf("failed to create cloud backend: %w", err))
+		return err
+	}
+	
+	// Get file info
+	info, err := os.Stat(backupFile)
+	if err != nil {
+		uploadStep.Fail(fmt.Errorf("failed to stat backup file: %w", err))
+		return err
+	}
+	
+	filename := filepath.Base(backupFile)
+	e.log.Info("Uploading backup to cloud", "file", filename, "size", cloud.FormatSize(info.Size()))
+	
+	// Progress callback
+	var lastPercent int
+	progressCallback := func(transferred, total int64) {
+		percent := int(float64(transferred) / float64(total) * 100)
+		if percent != lastPercent && percent%10 == 0 {
+			e.log.Debug("Upload progress", "percent", percent, "transferred", cloud.FormatSize(transferred), "total", cloud.FormatSize(total))
+			lastPercent = percent
+		}
+	}
+	
+	// Upload to cloud
+	err = backend.Upload(ctx, backupFile, filename, progressCallback)
+	if err != nil {
+		uploadStep.Fail(fmt.Errorf("cloud upload failed: %w", err))
+		return err
+	}
+	
+	// Also upload metadata file
+	metaFile := backupFile + ".meta.json"
+	if _, err := os.Stat(metaFile); err == nil {
+		metaFilename := filepath.Base(metaFile)
+		if err := backend.Upload(ctx, metaFile, metaFilename, nil); err != nil {
+			e.log.Warn("Failed to upload metadata file", "error", err)
+			// Don't fail if metadata upload fails
+		}
+	}
+	
+	uploadStep.Complete(fmt.Sprintf("Uploaded to %s/%s/%s", backend.Name(), e.cfg.CloudBucket, filename))
+	e.log.Info("Backup uploaded to cloud", "provider", backend.Name(), "bucket", e.cfg.CloudBucket, "file", filename)
 	
 	return nil
 }

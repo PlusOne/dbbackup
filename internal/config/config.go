@@ -85,6 +85,17 @@ type Config struct {
 	TUIDryRun       bool   // TUI dry-run mode (simulate without execution)
 	TUIVerbose      bool   // Verbose TUI logging
 	TUILogFile      string // TUI event log file path
+
+	// Cloud storage options (v2.0)
+	CloudEnabled    bool   // Enable cloud storage integration
+	CloudProvider   string // "s3", "minio", "b2"
+	CloudBucket     string // Bucket name
+	CloudRegion     string // Region (for S3)
+	CloudEndpoint   string // Custom endpoint (for MinIO, B2)
+	CloudAccessKey  string // Access key
+	CloudSecretKey  string // Secret key
+	CloudPrefix     string // Key prefix
+	CloudAutoUpload bool   // Automatically upload after backup
 }
 
 // New creates a new configuration with default values
@@ -192,6 +203,17 @@ func New() *Config {
 		TUIDryRun:       getEnvBool("TUI_DRY_RUN", false),      // Execute by default
 		TUIVerbose:      getEnvBool("TUI_VERBOSE", false),      // Quiet by default
 		TUILogFile:      getEnvString("TUI_LOG_FILE", ""),      // No log file by default
+
+		// Cloud storage defaults (v2.0)
+		CloudEnabled:    getEnvBool("CLOUD_ENABLED", false),
+		CloudProvider:   getEnvString("CLOUD_PROVIDER", "s3"),
+		CloudBucket:     getEnvString("CLOUD_BUCKET", ""),
+		CloudRegion:     getEnvString("CLOUD_REGION", "us-east-1"),
+		CloudEndpoint:   getEnvString("CLOUD_ENDPOINT", ""),
+		CloudAccessKey:  getEnvString("CLOUD_ACCESS_KEY", getEnvString("AWS_ACCESS_KEY_ID", "")),
+		CloudSecretKey:  getEnvString("CLOUD_SECRET_KEY", getEnvString("AWS_SECRET_ACCESS_KEY", "")),
+		CloudPrefix:     getEnvString("CLOUD_PREFIX", ""),
+		CloudAutoUpload: getEnvBool("CLOUD_AUTO_UPLOAD", false),
 	}
 
 	// Ensure canonical defaults are enforced
