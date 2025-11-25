@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -92,7 +93,7 @@ func (s *S3Backend) buildKey(filename string) string {
 	return filepath.Join(s.prefix, filename)
 }
 
-// Upload uploads a file to S3
+// Upload uploads a file to S3 with multipart support for large files
 func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, progress ProgressCallback) error {
 	// Open local file
 	file, err := os.Open(localPath)
@@ -108,17 +109,30 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, pr
 	}
 	fileSize := stat.Size()
 
+	// Build S3 key
+	key := s.buildKey(remotePath)
+
+	// Use multipart upload for files larger than 100MB
+	const multipartThreshold = 100 * 1024 * 1024 // 100 MB
+	
+	if fileSize > multipartThreshold {
+		return s.uploadMultipart(ctx, file, key, fileSize, progress)
+	}
+
+	// Simple upload for smaller files
+	return s.uploadSimple(ctx, file, key, fileSize, progress)
+}
+
+// uploadSimple performs a simple single-part upload
+func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string, fileSize int64, progress ProgressCallback) error {
 	// Create progress reader
 	var reader io.Reader = file
 	if progress != nil {
 		reader = NewProgressReader(file, fileSize, progress)
 	}
 
-	// Build S3 key
-	key := s.buildKey(remotePath)
-
 	// Upload to S3
-	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 		Body:   reader,
@@ -126,6 +140,40 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, pr
 	
 	if err != nil {
 		return fmt.Errorf("failed to upload to S3: %w", err)
+	}
+
+	return nil
+}
+
+// uploadMultipart performs a multipart upload for large files
+func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key string, fileSize int64, progress ProgressCallback) error {
+	// Create uploader with custom options
+	uploader := manager.NewUploader(s.client, func(u *manager.Uploader) {
+		// Part size: 10MB
+		u.PartSize = 10 * 1024 * 1024
+		
+		// Upload up to 10 parts concurrently
+		u.Concurrency = 10
+		
+		// Leave parts on failure for debugging
+		u.LeavePartsOnError = false
+	})
+
+	// Wrap file with progress reader
+	var reader io.Reader = file
+	if progress != nil {
+		reader = NewProgressReader(file, fileSize, progress)
+	}
+
+	// Upload with multipart
+	_, err := uploader.Upload(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+		Body:   reader,
+	})
+
+	if err != nil {
+		return fmt.Errorf("multipart upload failed: %w", err)
 	}
 
 	return nil

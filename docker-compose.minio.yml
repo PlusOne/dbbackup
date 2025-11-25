@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # MinIO S3-compatible object storage for testing
+  minio:
+    image: minio/minio:latest
+    container_name: dbbackup-minio
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Web Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_REGION: us-east-1
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - dbbackup-test
+
+  # PostgreSQL database for backup testing
+  postgres:
+    image: postgres:16-alpine
+    container_name: dbbackup-postgres-test
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass123
+      POSTGRES_DB: testdb
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./test_data:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dbbackup-test
+
+  # MySQL database for backup testing
+  mysql:
+    image: mysql:8.0
+    container_name: dbbackup-mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass123
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./test_data:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dbbackup-test
+
+  # MinIO Client (mc) for bucket management
+  minio-mc:
+    image: minio/mc:latest
+    container_name: dbbackup-minio-mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin123;
+      /usr/bin/mc mb --ignore-existing myminio/test-backups;
+      /usr/bin/mc mb --ignore-existing myminio/production-backups;
+      /usr/bin/mc mb --ignore-existing myminio/dev-backups;
+      echo 'MinIO buckets created successfully';
+      exit 0;
+      "
+    networks:
+      - dbbackup-test
+
+volumes:
+  minio-data:
+    driver: local
+  postgres-data:
+    driver: local
+  mysql-data:
+    driver: local
+
+networks:
+  dbbackup-test:
+    driver: bridge
