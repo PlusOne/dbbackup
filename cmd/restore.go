@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"dbbackup/internal/cloud"
 	"dbbackup/internal/database"
 	"dbbackup/internal/restore"
 	"dbbackup/internal/security"
@@ -168,19 +169,49 @@ func init() {
 // runRestoreSingle restores a single database
 func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
-
-	// Convert to absolute path
-	if !filepath.IsAbs(archivePath) {
-		absPath, err := filepath.Abs(archivePath)
+	
+	// Check if this is a cloud URI
+	var cleanupFunc func() error
+	
+	if cloud.IsCloudURI(archivePath) {
+		log.Info("Detected cloud URI, downloading backup...", "uri", archivePath)
+		
+		// Download from cloud
+		result, err := restore.DownloadFromCloudURI(cmd.Context(), archivePath, restore.DownloadOptions{
+			VerifyChecksum: true,
+			KeepLocal:      false, // Delete after restore
+		})
 		if err != nil {
-			return fmt.Errorf("invalid archive path: %w", err)
+			return fmt.Errorf("failed to download from cloud: %w", err)
 		}
-		archivePath = absPath
-	}
+		
+		archivePath = result.LocalPath
+		cleanupFunc = result.Cleanup
+		
+		// Ensure cleanup happens on exit
+		defer func() {
+			if cleanupFunc != nil {
+				if err := cleanupFunc(); err != nil {
+					log.Warn("Failed to cleanup temp files", "error", err)
+				}
+			}
+		}()
+		
+		log.Info("Download completed", "local_path", archivePath)
+	} else {
+		// Convert to absolute path for local files
+		if !filepath.IsAbs(archivePath) {
+			absPath, err := filepath.Abs(archivePath)
+			if err != nil {
+				return fmt.Errorf("invalid archive path: %w", err)
+			}
+			archivePath = absPath
+		}
 
-	// Check if file exists
-	if _, err := os.Stat(archivePath); err != nil {
-		return fmt.Errorf("archive not found: %s", archivePath)
+		// Check if file exists
+		if _, err := os.Stat(archivePath); err != nil {
+			return fmt.Errorf("archive not found: %s", archivePath)
+		}
 	}
 
 	// Detect format

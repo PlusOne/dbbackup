@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"dbbackup/internal/cloud"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/retention"
 	"github.com/spf13/cobra"
@@ -53,7 +56,15 @@ func init() {
 }
 
 func runCleanup(cmd *cobra.Command, args []string) error {
-	backupDir := args[0]
+	backupPath := args[0]
+	
+	// Check if this is a cloud URI
+	if isCloudURIPath(backupPath) {
+		return runCloudCleanup(cmd.Context(), backupPath)
+	}
+
+	// Local cleanup
+	backupDir := backupPath
 
 	// Validate directory exists
 	if !dirExists(backupDir) {
@@ -149,4 +160,175 @@ func dirExists(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+// isCloudURIPath checks if a path is a cloud URI
+func isCloudURIPath(s string) bool {
+	return cloud.IsCloudURI(s)
+}
+
+// runCloudCleanup applies retention policy to cloud storage
+func runCloudCleanup(ctx context.Context, uri string) error {
+	// Parse cloud URI
+	cloudURI, err := cloud.ParseCloudURI(uri)
+	if err != nil {
+		return fmt.Errorf("invalid cloud URI: %w", err)
+	}
+	
+	fmt.Printf("☁️  Cloud Cleanup Policy:\n")
+	fmt.Printf("   URI: %s\n", uri)
+	fmt.Printf("   Provider: %s\n", cloudURI.Provider)
+	fmt.Printf("   Bucket: %s\n", cloudURI.Bucket)
+	if cloudURI.Path != "" {
+		fmt.Printf("   Prefix: %s\n", cloudURI.Path)
+	}
+	fmt.Printf("   Retention: %d days\n", retentionDays)
+	fmt.Printf("   Min backups: %d\n", minBackups)
+	if dryRun {
+		fmt.Printf("   Mode: DRY RUN (no files will be deleted)\n")
+	}
+	fmt.Println()
+	
+	// Create cloud backend
+	cfg := cloudURI.ToConfig()
+	backend, err := cloud.NewBackend(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create cloud backend: %w", err)
+	}
+	
+	// List all backups
+	backups, err := backend.List(ctx, cloudURI.Path)
+	if err != nil {
+		return fmt.Errorf("failed to list cloud backups: %w", err)
+	}
+	
+	if len(backups) == 0 {
+		fmt.Println("No backups found in cloud storage")
+		return nil
+	}
+	
+	fmt.Printf("Found %d backup(s) in cloud storage\n\n", len(backups))
+	
+	// Filter backups based on pattern if specified
+	var filteredBackups []cloud.BackupInfo
+	if cleanupPattern != "" {
+		for _, backup := range backups {
+			matched, _ := filepath.Match(cleanupPattern, backup.Name)
+			if matched {
+				filteredBackups = append(filteredBackups, backup)
+			}
+		}
+		fmt.Printf("Pattern matched %d backup(s)\n\n", len(filteredBackups))
+	} else {
+		filteredBackups = backups
+	}
+	
+	// Sort by modification time (oldest first)
+	// Already sorted by backend.List
+	
+	// Calculate retention date
+	cutoffDate := time.Now().AddDate(0, 0, -retentionDays)
+	
+	// Determine which backups to delete
+	var toDelete []cloud.BackupInfo
+	var toKeep []cloud.BackupInfo
+	
+	for _, backup := range filteredBackups {
+		if backup.LastModified.Before(cutoffDate) {
+			toDelete = append(toDelete, backup)
+		} else {
+			toKeep = append(toKeep, backup)
+		}
+	}
+	
+	// Ensure we keep minimum backups
+	totalBackups := len(filteredBackups)
+	if totalBackups-len(toDelete) < minBackups {
+		// Need to keep more backups
+		keepCount := minBackups - len(toKeep)
+		if keepCount > len(toDelete) {
+			keepCount = len(toDelete)
+		}
+		
+		// Move oldest from toDelete to toKeep
+		for i := len(toDelete) - 1; i >= len(toDelete)-keepCount && i >= 0; i-- {
+			toKeep = append(toKeep, toDelete[i])
+			toDelete = toDelete[:i]
+		}
+	}
+	
+	// Display results
+	fmt.Printf("📊 Results:\n")
+	fmt.Printf("   Total backups: %d\n", totalBackups)
+	fmt.Printf("   Eligible for deletion: %d\n", len(toDelete))
+	fmt.Printf("   Will keep: %d\n", len(toKeep))
+	fmt.Println()
+	
+	if len(toDelete) > 0 {
+		if dryRun {
+			fmt.Printf("🔍 Would delete %d backup(s):\n", len(toDelete))
+		} else {
+			fmt.Printf("🗑️  Deleting %d backup(s):\n", len(toDelete))
+		}
+		
+		var totalSize int64
+		var deletedCount int
+		
+		for _, backup := range toDelete {
+			fmt.Printf("   - %s (%s, %s old)\n", 
+				backup.Name, 
+				cloud.FormatSize(backup.Size),
+				formatBackupAge(backup.LastModified))
+			
+			totalSize += backup.Size
+			
+			if !dryRun {
+				if err := backend.Delete(ctx, backup.Key); err != nil {
+					fmt.Printf("     ❌ Error: %v\n", err)
+				} else {
+					deletedCount++
+					// Also try to delete metadata
+					backend.Delete(ctx, backup.Key+".meta.json")
+				}
+			}
+		}
+		
+		fmt.Printf("\n💾 Space %s: %s\n", 
+			map[bool]string{true: "would be freed", false: "freed"}[dryRun],
+			cloud.FormatSize(totalSize))
+			
+		if !dryRun && deletedCount > 0 {
+			fmt.Printf("✅ Successfully deleted %d backup(s)\n", deletedCount)
+		}
+	} else {
+		fmt.Println("No backups eligible for deletion")
+	}
+	
+	return nil
+}
+
+// formatBackupAge returns a human-readable age string from a time.Time
+func formatBackupAge(t time.Time) string {
+	d := time.Since(t)
+	days := int(d.Hours() / 24)
+	
+	if days == 0 {
+		return "today"
+	} else if days == 1 {
+		return "1 day"
+	} else if days < 30 {
+		return fmt.Sprintf("%d days", days)
+	} else if days < 365 {
+		months := days / 30
+		if months == 1 {
+			return "1 month"
+		}
+		return fmt.Sprintf("%d months", months)
+	} else {
+		years := days / 365
+		if years == 1 {
+			return "1 year"
+		}
+		return fmt.Sprintf("%d years", years)
+	}
 }

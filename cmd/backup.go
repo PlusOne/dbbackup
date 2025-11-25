@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"dbbackup/internal/cloud"
 	"github.com/spf13/cobra"
 )
 
@@ -92,6 +93,7 @@ func init() {
 	
 	// Cloud storage flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().String("cloud", "", "Cloud storage URI (e.g., s3://bucket/path) - takes precedence over individual flags")
 		cmd.Flags().Bool("cloud-auto-upload", false, "Automatically upload backup to cloud after completion")
 		cmd.Flags().String("cloud-provider", "", "Cloud provider (s3, minio, b2)")
 		cmd.Flags().String("cloud-bucket", "", "Cloud bucket name")
@@ -109,32 +111,39 @@ func init() {
 				}
 			}
 			
-			// Update cloud config from flags
-			if c.Flags().Changed("cloud-auto-upload") {
-				if autoUpload, _ := c.Flags().GetBool("cloud-auto-upload"); autoUpload {
-					cfg.CloudEnabled = true
-					cfg.CloudAutoUpload = true
+			// Check if --cloud URI flag is provided (takes precedence)
+			if c.Flags().Changed("cloud") {
+				if err := parseCloudURIFlag(c); err != nil {
+					return err
 				}
-			}
-			
-			if c.Flags().Changed("cloud-provider") {
-				cfg.CloudProvider, _ = c.Flags().GetString("cloud-provider")
-			}
-			
-			if c.Flags().Changed("cloud-bucket") {
-				cfg.CloudBucket, _ = c.Flags().GetString("cloud-bucket")
-			}
-			
-			if c.Flags().Changed("cloud-region") {
-				cfg.CloudRegion, _ = c.Flags().GetString("cloud-region")
-			}
-			
-			if c.Flags().Changed("cloud-endpoint") {
-				cfg.CloudEndpoint, _ = c.Flags().GetString("cloud-endpoint")
-			}
-			
-			if c.Flags().Changed("cloud-prefix") {
-				cfg.CloudPrefix, _ = c.Flags().GetString("cloud-prefix")
+			} else {
+				// Update cloud config from individual flags
+				if c.Flags().Changed("cloud-auto-upload") {
+					if autoUpload, _ := c.Flags().GetBool("cloud-auto-upload"); autoUpload {
+						cfg.CloudEnabled = true
+						cfg.CloudAutoUpload = true
+					}
+				}
+				
+				if c.Flags().Changed("cloud-provider") {
+					cfg.CloudProvider, _ = c.Flags().GetString("cloud-provider")
+				}
+				
+				if c.Flags().Changed("cloud-bucket") {
+					cfg.CloudBucket, _ = c.Flags().GetString("cloud-bucket")
+				}
+				
+				if c.Flags().Changed("cloud-region") {
+					cfg.CloudRegion, _ = c.Flags().GetString("cloud-region")
+				}
+				
+				if c.Flags().Changed("cloud-endpoint") {
+					cfg.CloudEndpoint, _ = c.Flags().GetString("cloud-endpoint")
+				}
+				
+				if c.Flags().Changed("cloud-prefix") {
+					cfg.CloudPrefix, _ = c.Flags().GetString("cloud-prefix")
+				}
 			}
 			
 			return nil
@@ -177,4 +186,40 @@ func init() {
 	
 	// Mark the strategy flags as mutually exclusive
 	sampleCmd.MarkFlagsMutuallyExclusive("sample-ratio", "sample-percent", "sample-count")
+}
+
+// parseCloudURIFlag parses the --cloud URI flag and updates config
+func parseCloudURIFlag(cmd *cobra.Command) error {
+	cloudURI, _ := cmd.Flags().GetString("cloud")
+	if cloudURI == "" {
+		return nil
+	}
+	
+	// Parse cloud URI
+	uri, err := cloud.ParseCloudURI(cloudURI)
+	if err != nil {
+		return fmt.Errorf("invalid cloud URI: %w", err)
+	}
+	
+	// Enable cloud and auto-upload
+	cfg.CloudEnabled = true
+	cfg.CloudAutoUpload = true
+	
+	// Update config from URI
+	cfg.CloudProvider = uri.Provider
+	cfg.CloudBucket = uri.Bucket
+	
+	if uri.Region != "" {
+		cfg.CloudRegion = uri.Region
+	}
+	
+	if uri.Endpoint != "" {
+		cfg.CloudEndpoint = uri.Endpoint
+	}
+	
+	if uri.Path != "" {
+		cfg.CloudPrefix = uri.Dir()
+	}
+	
+	return nil
 }
