@@ -16,6 +16,31 @@ Professional database backup and restore utility for PostgreSQL, MySQL, and Mari
 
 ## Installation
 
+### Docker (Recommended)
+
+**Pull from registry:**
+```bash
+docker pull git.uuxo.net/uuxo/dbbackup:latest
+```
+
+**Quick start:**
+```bash
+# PostgreSQL backup
+docker run --rm \
+  -v $(pwd)/backups:/backups \
+  -e PGHOST=your-host \
+  -e PGUSER=postgres \
+  -e PGPASSWORD=secret \
+  git.uuxo.net/uuxo/dbbackup:latest backup single mydb
+
+# Interactive mode
+docker run --rm -it \
+  -v $(pwd)/backups:/backups \
+  git.uuxo.net/uuxo/dbbackup:latest interactive
+```
+
+See [DOCKER.md](DOCKER.md) for complete Docker documentation.
+
 ### Download Pre-compiled Binary
 
 Linux x86_64:
