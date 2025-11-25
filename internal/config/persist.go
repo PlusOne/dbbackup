@@ -29,6 +29,11 @@ type LocalConfig struct {
 	// Performance settings
 	CPUWorkload string
 	MaxCores    int
+
+	// Security settings
+	RetentionDays int
+	MinBackups    int
+	MaxRetries    int
 }
 
 // LoadLocalConfig loads configuration from .dbbackup.conf in current directory
@@ -114,6 +119,21 @@ func LoadLocalConfig() (*LocalConfig, error) {
 					cfg.MaxCores = mc
 				}
 			}
+		case "security":
+			switch key {
+			case "retention_days":
+				if rd, err := strconv.Atoi(value); err == nil {
+					cfg.RetentionDays = rd
+				}
+			case "min_backups":
+				if mb, err := strconv.Atoi(value); err == nil {
+					cfg.MinBackups = mb
+				}
+			case "max_retries":
+				if mr, err := strconv.Atoi(value); err == nil {
+					cfg.MaxRetries = mr
+				}
+			}
 		}
 	}
 
@@ -173,6 +193,19 @@ func SaveLocalConfig(cfg *LocalConfig) error {
 	if cfg.MaxCores != 0 {
 		sb.WriteString(fmt.Sprintf("max_cores = %d\n", cfg.MaxCores))
 	}
+	sb.WriteString("\n")
+
+	// Security section
+	sb.WriteString("[security]\n")
+	if cfg.RetentionDays != 0 {
+		sb.WriteString(fmt.Sprintf("retention_days = %d\n", cfg.RetentionDays))
+	}
+	if cfg.MinBackups != 0 {
+		sb.WriteString(fmt.Sprintf("min_backups = %d\n", cfg.MinBackups))
+	}
+	if cfg.MaxRetries != 0 {
+		sb.WriteString(fmt.Sprintf("max_retries = %d\n", cfg.MaxRetries))
+	}
 
 	configPath := filepath.Join(".", ConfigFileName)
 	// Use 0600 permissions for security (readable/writable only by owner)
@@ -226,22 +259,34 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.MaxCores != 0 {
 		cfg.MaxCores = local.MaxCores
 	}
+	if cfg.RetentionDays == 30 && local.RetentionDays != 0 {
+		cfg.RetentionDays = local.RetentionDays
+	}
+	if cfg.MinBackups == 5 && local.MinBackups != 0 {
+		cfg.MinBackups = local.MinBackups
+	}
+	if cfg.MaxRetries == 3 && local.MaxRetries != 0 {
+		cfg.MaxRetries = local.MaxRetries
+	}
 }
 
 // ConfigFromConfig creates a LocalConfig from a Config
 func ConfigFromConfig(cfg *Config) *LocalConfig {
 	return &LocalConfig{
-		DBType:      cfg.DatabaseType,
-		Host:        cfg.Host,
-		Port:        cfg.Port,
-		User:        cfg.User,
-		Database:    cfg.Database,
-		SSLMode:     cfg.SSLMode,
-		BackupDir:   cfg.BackupDir,
-		Compression: cfg.CompressionLevel,
-		Jobs:        cfg.Jobs,
-		DumpJobs:    cfg.DumpJobs,
-		CPUWorkload: cfg.CPUWorkloadType,
-		MaxCores:    cfg.MaxCores,
+		DBType:        cfg.DatabaseType,
+		Host:          cfg.Host,
+		Port:          cfg.Port,
+		User:          cfg.User,
+		Database:      cfg.Database,
+		SSLMode:       cfg.SSLMode,
+		BackupDir:     cfg.BackupDir,
+		Compression:   cfg.CompressionLevel,
+		Jobs:          cfg.Jobs,
+		DumpJobs:      cfg.DumpJobs,
+		CPUWorkload:   cfg.CPUWorkloadType,
+		MaxCores:      cfg.MaxCores,
+		RetentionDays: cfg.RetentionDays,
+		MinBackups:    cfg.MinBackups,
+		MaxRetries:    cfg.MaxRetries,
 	}
 }

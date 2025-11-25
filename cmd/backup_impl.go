@@ -24,6 +24,20 @@ func runClusterBackup(ctx context.Context) error {
 		return fmt.Errorf("configuration error: %w", err)
 	}
 	
+	// Check privileges
+	privChecker := security.NewPrivilegeChecker(log)
+	if err := privChecker.CheckAndWarn(cfg.AllowRoot); err != nil {
+		return err
+	}
+	
+	// Check resource limits
+	if cfg.CheckResources {
+		resChecker := security.NewResourceChecker(log)
+		if _, err := resChecker.CheckResourceLimits(); err != nil {
+			log.Warn("Failed to check resource limits", "error", err)
+		}
+	}
+	
 	log.Info("Starting cluster backup", 
 		"host", cfg.Host, 
 		"port", cfg.Port,
@@ -32,6 +46,13 @@ func runClusterBackup(ctx context.Context) error {
 	// Audit log: backup start
 	user := security.GetCurrentUser()
 	auditLogger.LogBackupStart(user, "all_databases", "cluster")
+	
+	// Rate limit connection attempts
+	host := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	if err := rateLimiter.CheckAndWait(host); err != nil {
+		auditLogger.LogBackupFailed(user, "all_databases", err)
+		return fmt.Errorf("rate limit exceeded: %w", err)
+	}
 	
 	// Create database instance
 	db, err := database.New(cfg, log)
@@ -43,9 +64,11 @@ func runClusterBackup(ctx context.Context) error {
 	
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
+		rateLimiter.RecordFailure(host)
 		auditLogger.LogBackupFailed(user, "all_databases", err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
+	rateLimiter.RecordSuccess(host)
 	
 	// Create backup engine
 	engine := backup.New(cfg, log, db)
@@ -58,6 +81,16 @@ func runClusterBackup(ctx context.Context) error {
 	
 	// Audit log: backup success
 	auditLogger.LogBackupComplete(user, "all_databases", cfg.BackupDir, 0)
+	
+	// Cleanup old backups if retention policy is enabled
+	if cfg.RetentionDays > 0 {
+		retentionPolicy := security.NewRetentionPolicy(cfg.RetentionDays, cfg.MinBackups, log)
+		if deleted, freed, err := retentionPolicy.CleanupOldBackups(cfg.BackupDir); err != nil {
+			log.Warn("Failed to cleanup old backups", "error", err)
+		} else if deleted > 0 {
+			log.Info("Cleaned up old backups", "deleted", deleted, "freed_mb", freed/1024/1024)
+		}
+	}
 	
 	// Save configuration for future use (unless disabled)
 	if !cfg.NoSaveConfig {
@@ -83,6 +116,12 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		return fmt.Errorf("configuration error: %w", err)
 	}
 	
+	// Check privileges
+	privChecker := security.NewPrivilegeChecker(log)
+	if err := privChecker.CheckAndWarn(cfg.AllowRoot); err != nil {
+		return err
+	}
+	
 	log.Info("Starting single database backup", 
 		"database", databaseName,
 		"db_type", cfg.DatabaseType,
@@ -94,6 +133,13 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	user := security.GetCurrentUser()
 	auditLogger.LogBackupStart(user, databaseName, "single")
 	
+	// Rate limit connection attempts
+	host := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	if err := rateLimiter.CheckAndWait(host); err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
+		return fmt.Errorf("rate limit exceeded: %w", err)
+	}
+	
 	// Create database instance
 	db, err := database.New(cfg, log)
 	if err != nil {
@@ -104,9 +150,11 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
+		rateLimiter.RecordFailure(host)
 		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
+	rateLimiter.RecordSuccess(host)
 	
 	// Verify database exists
 	exists, err := db.DatabaseExists(ctx, databaseName)
@@ -132,6 +180,16 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Audit log: backup success
 	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, 0)
 	
+	// Cleanup old backups if retention policy is enabled
+	if cfg.RetentionDays > 0 {
+		retentionPolicy := security.NewRetentionPolicy(cfg.RetentionDays, cfg.MinBackups, log)
+		if deleted, freed, err := retentionPolicy.CleanupOldBackups(cfg.BackupDir); err != nil {
+			log.Warn("Failed to cleanup old backups", "error", err)
+		} else if deleted > 0 {
+			log.Info("Cleaned up old backups", "deleted", deleted, "freed_mb", freed/1024/1024)
+		}
+	}
+	
 	// Save configuration for future use (unless disabled)
 	if !cfg.NoSaveConfig {
 		localCfg := config.ConfigFromConfig(cfg)
@@ -154,6 +212,12 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
+	}
+	
+	// Check privileges
+	privChecker := security.NewPrivilegeChecker(log)
+	if err := privChecker.CheckAndWarn(cfg.AllowRoot); err != nil {
+		return err
 	}
 	
 	// Validate sample parameters
@@ -189,6 +253,13 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	user := security.GetCurrentUser()
 	auditLogger.LogBackupStart(user, databaseName, "sample")
 	
+	// Rate limit connection attempts
+	host := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	if err := rateLimiter.CheckAndWait(host); err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
+		return fmt.Errorf("rate limit exceeded: %w", err)
+	}
+	
 	// Create database instance
 	db, err := database.New(cfg, log)
 	if err != nil {
@@ -199,9 +270,11 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
+		rateLimiter.RecordFailure(host)
 		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
+	rateLimiter.RecordSuccess(host)
 	
 	// Verify database exists
 	exists, err := db.DatabaseExists(ctx, databaseName)

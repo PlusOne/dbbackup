@@ -68,6 +68,13 @@ type Config struct {
 	SwapFilePath   string // Path to temporary swap file
 	SwapFileSizeGB int    // Size in GB (0 = disabled)
 	AutoSwap       bool   // Automatically manage swap for large backups
+
+	// Security options (MEDIUM priority)
+	RetentionDays  int  // Backup retention in days (0 = disabled)
+	MinBackups     int  // Minimum backups to keep regardless of age
+	MaxRetries     int  // Maximum connection retry attempts
+	AllowRoot      bool // Allow running as root/Administrator
+	CheckResources bool // Check resource limits before operations
 }
 
 // New creates a new configuration with default values
@@ -158,6 +165,13 @@ func New() *Config {
 		SwapFilePath:   getEnvString("SWAP_FILE_PATH", "/tmp/dbbackup_swap"),
 		SwapFileSizeGB: getEnvInt("SWAP_FILE_SIZE_GB", 0), // 0 = disabled by default
 		AutoSwap:       getEnvBool("AUTO_SWAP", false),
+
+		// Security defaults (MEDIUM priority)
+		RetentionDays:  getEnvInt("RETENTION_DAYS", 30),        // Keep backups for 30 days
+		MinBackups:     getEnvInt("MIN_BACKUPS", 5),            // Keep at least 5 backups
+		MaxRetries:     getEnvInt("MAX_RETRIES", 3),            // Maximum 3 retry attempts
+		AllowRoot:      getEnvBool("ALLOW_ROOT", false),        // Disallow root by default
+		CheckResources: getEnvBool("CHECK_RESOURCES", true),    // Check resources by default
 	}
 
 	// Ensure canonical defaults are enforced

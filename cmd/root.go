@@ -14,6 +14,7 @@ var (
 	cfg         *config.Config
 	log         logger.Logger
 	auditLogger *security.AuditLogger
+	rateLimiter *security.RateLimiter
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -62,6 +63,9 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	
 	// Initialize audit logger
 	auditLogger = security.NewAuditLogger(logger, true)
+	
+	// Initialize rate limiter
+	rateLimiter = security.NewRateLimiter(config.MaxRetries, logger)
 
 	// Set version info
 	rootCmd.Version = fmt.Sprintf("%s (built: %s, commit: %s)",
@@ -87,6 +91,13 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().IntVar(&cfg.CompressionLevel, "compression", cfg.CompressionLevel, "Compression level (0-9)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoSaveConfig, "no-save-config", false, "Don't save configuration after successful operations")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoLoadConfig, "no-config", false, "Don't load configuration from .dbbackup.conf")
+	
+	// Security flags (MEDIUM priority)
+	rootCmd.PersistentFlags().IntVar(&cfg.RetentionDays, "retention-days", cfg.RetentionDays, "Backup retention period in days (0=disabled)")
+	rootCmd.PersistentFlags().IntVar(&cfg.MinBackups, "min-backups", cfg.MinBackups, "Minimum number of backups to keep")
+	rootCmd.PersistentFlags().IntVar(&cfg.MaxRetries, "max-retries", cfg.MaxRetries, "Maximum connection retry attempts")
+	rootCmd.PersistentFlags().BoolVar(&cfg.AllowRoot, "allow-root", cfg.AllowRoot, "Allow running as root/Administrator")
+	rootCmd.PersistentFlags().BoolVar(&cfg.CheckResources, "check-resources", cfg.CheckResources, "Check system resource limits")
 
 	return rootCmd.ExecuteContext(ctx)
 }
