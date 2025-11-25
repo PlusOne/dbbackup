@@ -21,6 +21,7 @@ import (
 	"dbbackup/internal/database"
 	"dbbackup/internal/security"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/metrics"
 	"dbbackup/internal/progress"
 	"dbbackup/internal/swap"
@@ -541,9 +542,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		operation.Complete(fmt.Sprintf("Cluster backup created: %s (%s)", outputFile, size))
 	}
 	
-	// Create metadata file
-	if err := e.createMetadata(outputFile, "cluster", "cluster", ""); err != nil {
-		e.log.Warn("Failed to create metadata file", "error", err)
+	// Create cluster metadata file
+	if err := e.createClusterMetadata(outputFile, databases, successCountFinal, failCountFinal); err != nil {
+		e.log.Warn("Failed to create cluster metadata file", "error", err)
 	}
 	
 	return nil
@@ -910,9 +911,70 @@ regularTar:
 
 // createMetadata creates a metadata file for the backup
 func (e *Engine) createMetadata(backupFile, database, backupType, strategy string) error {
-	metaFile := backupFile + ".info"
+	startTime := time.Now()
 	
-	content := fmt.Sprintf(`{
+	// Get backup file information
+	info, err := os.Stat(backupFile)
+	if err != nil {
+		return fmt.Errorf("failed to stat backup file: %w", err)
+	}
+	
+	// Calculate SHA-256 checksum
+	sha256, err := metadata.CalculateSHA256(backupFile)
+	if err != nil {
+		return fmt.Errorf("failed to calculate checksum: %w", err)
+	}
+	
+	// Get database version
+	ctx := context.Background()
+	dbVersion, _ := e.db.GetVersion(ctx)
+	if dbVersion == "" {
+		dbVersion = "unknown"
+	}
+	
+	// Determine compression format
+	compressionFormat := "none"
+	if e.cfg.CompressionLevel > 0 {
+		if e.cfg.Jobs > 1 {
+			compressionFormat = fmt.Sprintf("pigz-%d", e.cfg.CompressionLevel)
+		} else {
+			compressionFormat = fmt.Sprintf("gzip-%d", e.cfg.CompressionLevel)
+		}
+	}
+	
+	// Create backup metadata
+	meta := &metadata.BackupMetadata{
+		Version:         "2.0",
+		Timestamp:       startTime,
+		Database:        database,
+		DatabaseType:    e.cfg.DatabaseType,
+		DatabaseVersion: dbVersion,
+		Host:            e.cfg.Host,
+		Port:            e.cfg.Port,
+		User:            e.cfg.User,
+		BackupFile:      backupFile,
+		SizeBytes:       info.Size(),
+		SHA256:          sha256,
+		Compression:     compressionFormat,
+		BackupType:      backupType,
+		Duration:        time.Since(startTime).Seconds(),
+		ExtraInfo:       make(map[string]string),
+	}
+	
+	// Add strategy for sample backups
+	if strategy != "" {
+		meta.ExtraInfo["sample_strategy"] = strategy
+		meta.ExtraInfo["sample_value"] = fmt.Sprintf("%d", e.cfg.SampleValue)
+	}
+	
+	// Save metadata
+	if err := meta.Save(); err != nil {
+		return fmt.Errorf("failed to save metadata: %w", err)
+	}
+	
+	// Also save legacy .info file for backward compatibility
+	legacyMetaFile := backupFile + ".info"
+	legacyContent := fmt.Sprintf(`{
   "type": "%s",
   "database": "%s",
   "timestamp": "%s",
@@ -920,24 +982,102 @@ func (e *Engine) createMetadata(backupFile, database, backupType, strategy strin
   "port": %d,
   "user": "%s",
   "db_type": "%s",
-  "compression": %d`,
-		backupType, database, time.Now().Format("20060102_150405"),
-		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.DatabaseType, e.cfg.CompressionLevel)
+  "compression": %d,
+  "size_bytes": %d
+}`, backupType, database, startTime.Format("20060102_150405"),
+		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.DatabaseType, 
+		e.cfg.CompressionLevel, info.Size())
 	
-	if strategy != "" {
-		content += fmt.Sprintf(`,
-  "sample_strategy": "%s",
-  "sample_value": %d`, e.cfg.SampleStrategy, e.cfg.SampleValue)
+	if err := os.WriteFile(legacyMetaFile, []byte(legacyContent), 0644); err != nil {
+		e.log.Warn("Failed to save legacy metadata file", "error", err)
 	}
 	
-	if info, err := os.Stat(backupFile); err == nil {
-		content += fmt.Sprintf(`,
-  "size_bytes": %d`, info.Size())
+	return nil
+}
+
+// createClusterMetadata creates metadata for cluster backups
+func (e *Engine) createClusterMetadata(backupFile string, databases []string, successCount, failCount int) error {
+	startTime := time.Now()
+	
+	// Get backup file information
+	info, err := os.Stat(backupFile)
+	if err != nil {
+		return fmt.Errorf("failed to stat backup file: %w", err)
 	}
 	
-	content += "\n}"
+	// Calculate SHA-256 checksum for archive
+	sha256, err := metadata.CalculateSHA256(backupFile)
+	if err != nil {
+		return fmt.Errorf("failed to calculate checksum: %w", err)
+	}
 	
-	return os.WriteFile(metaFile, []byte(content), 0644)
+	// Get database version
+	ctx := context.Background()
+	dbVersion, _ := e.db.GetVersion(ctx)
+	if dbVersion == "" {
+		dbVersion = "unknown"
+	}
+	
+	// Create cluster metadata
+	clusterMeta := &metadata.ClusterMetadata{
+		Version:      "2.0",
+		Timestamp:    startTime,
+		ClusterName:  fmt.Sprintf("%s:%d", e.cfg.Host, e.cfg.Port),
+		DatabaseType: e.cfg.DatabaseType,
+		Host:         e.cfg.Host,
+		Port:         e.cfg.Port,
+		Databases:    make([]metadata.BackupMetadata, 0),
+		TotalSize:    info.Size(),
+		Duration:     time.Since(startTime).Seconds(),
+		ExtraInfo: map[string]string{
+			"database_count":   fmt.Sprintf("%d", len(databases)),
+			"success_count":    fmt.Sprintf("%d", successCount),
+			"failure_count":    fmt.Sprintf("%d", failCount),
+			"archive_sha256":   sha256,
+			"database_version": dbVersion,
+		},
+	}
+	
+	// Add database names to metadata
+	for _, dbName := range databases {
+		dbMeta := metadata.BackupMetadata{
+			Database:        dbName,
+			DatabaseType:    e.cfg.DatabaseType,
+			DatabaseVersion: dbVersion,
+			Timestamp:       startTime,
+		}
+		clusterMeta.Databases = append(clusterMeta.Databases, dbMeta)
+	}
+	
+	// Save cluster metadata
+	if err := clusterMeta.Save(backupFile); err != nil {
+		return fmt.Errorf("failed to save cluster metadata: %w", err)
+	}
+	
+	// Also save legacy .info file for backward compatibility
+	legacyMetaFile := backupFile + ".info"
+	legacyContent := fmt.Sprintf(`{
+  "type": "cluster",
+  "database": "cluster",
+  "timestamp": "%s",
+  "host": "%s",
+  "port": %d,
+  "user": "%s",
+  "db_type": "%s",
+  "compression": %d,
+  "size_bytes": %d,
+  "database_count": %d,
+  "success_count": %d,
+  "failure_count": %d
+}`, startTime.Format("20060102_150405"),
+		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.DatabaseType,
+		e.cfg.CompressionLevel, info.Size(), len(databases), successCount, failCount)
+	
+	if err := os.WriteFile(legacyMetaFile, []byte(legacyContent), 0644); err != nil {
+		e.log.Warn("Failed to save legacy cluster metadata file", "error", err)
+	}
+	
+	return nil
 }
 
 // executeCommand executes a backup command (optimized for huge databases)

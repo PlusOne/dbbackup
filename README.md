@@ -378,6 +378,111 @@ Restore entire PostgreSQL cluster from archive:
 ./dbbackup restore cluster ARCHIVE_FILE [OPTIONS]
 ```
 
+### Verification & Maintenance
+
+#### Verify Backup Integrity
+
+Verify backup files using SHA-256 checksums and metadata validation:
+
+```bash
+./dbbackup verify-backup BACKUP_FILE [OPTIONS]
+```
+
+**Options:**
+
+- `--quick` - Quick verification (size check only, no checksum calculation)
+- `--verbose` - Show detailed information about each backup
+
+**Examples:**
+
+```bash
+# Verify single backup (full SHA-256 check)
+./dbbackup verify-backup /backups/mydb_20251125.dump
+
+# Verify all backups in directory
+./dbbackup verify-backup /backups/*.dump --verbose
+
+# Quick verification (fast, size check only)
+./dbbackup verify-backup /backups/*.dump --quick
+```
+
+**Output:**
+```
+Verifying 3 backup file(s)...
+
+📁 mydb_20251125.dump
+   ✅ VALID
+   Size: 2.5 GiB
+   SHA-256: 7e166d4cb7276e1310d76922f45eda0333a6aeac...
+   Database: mydb (postgresql)
+   Created: 2025-11-25T19:00:00Z
+
+──────────────────────────────────────────────────
+Total: 3 backups
+✅ Valid: 3
+```
+
+#### Cleanup Old Backups
+
+Automatically remove old backups based on retention policy:
+
+```bash
+./dbbackup cleanup BACKUP_DIRECTORY [OPTIONS]
+```
+
+**Options:**
+
+- `--retention-days INT` - Delete backups older than N days (default: 30)
+- `--min-backups INT` - Always keep at least N most recent backups (default: 5)
+- `--dry-run` - Preview what would be deleted without actually deleting
+- `--pattern STRING` - Only clean backups matching pattern (e.g., "mydb_*.dump")
+
+**Retention Policy:**
+
+The cleanup command uses a safe retention policy:
+1. Backups older than `--retention-days` are eligible for deletion
+2. At least `--min-backups` most recent backups are always kept
+3. Both conditions must be met for a backup to be deleted
+
+**Examples:**
+
+```bash
+# Clean up backups older than 30 days (keep at least 5)
+./dbbackup cleanup /backups --retention-days 30 --min-backups 5
+
+# Preview what would be deleted
+./dbbackup cleanup /backups --retention-days 7 --dry-run
+
+# Clean specific database backups
+./dbbackup cleanup /backups --pattern "mydb_*.dump"
+
+# Aggressive cleanup (keep only 3 most recent)
+./dbbackup cleanup /backups --retention-days 1 --min-backups 3
+```
+
+**Output:**
+```
+🗑️  Cleanup Policy:
+   Directory: /backups
+   Retention: 30 days
+   Min backups: 5
+
+📊 Results:
+   Total backups: 12
+   Eligible for deletion: 7
+
+✅ Deleted 7 backup(s):
+   - old_db_20251001.dump
+   - old_db_20251002.dump
+   ...
+
+📦 Kept 5 backup(s)
+
+💾 Space freed: 15.2 GiB
+──────────────────────────────────────────────────
+✅ Cleanup completed successfully
+```
+
 **Options:**
 
 - `--confirm` - Confirm and execute restore (required for safety)
