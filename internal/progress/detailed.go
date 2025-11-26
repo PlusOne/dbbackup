@@ -200,7 +200,7 @@ func (ot *OperationTracker) SetFileProgress(filesDone, filesTotal int) {
 	}
 }
 
-// SetByteProgress updates byte-based progress
+// SetByteProgress updates byte-based progress with ETA calculation
 func (ot *OperationTracker) SetByteProgress(bytesDone, bytesTotal int64) {
 	ot.reporter.mu.Lock()
 	defer ot.reporter.mu.Unlock()
@@ -213,6 +213,27 @@ func (ot *OperationTracker) SetByteProgress(bytesDone, bytesTotal int64) {
 			if bytesTotal > 0 {
 				progress := int((bytesDone * 100) / bytesTotal)
 				ot.reporter.operations[i].Progress = progress
+				
+				// Calculate ETA and speed
+				elapsed := time.Since(ot.reporter.operations[i].StartTime).Seconds()
+				if elapsed > 0 && bytesDone > 0 {
+					speed := float64(bytesDone) / elapsed // bytes/sec
+					remaining := bytesTotal - bytesDone
+					eta := time.Duration(float64(remaining)/speed) * time.Second
+					
+					// Update progress message with ETA and speed
+					if ot.reporter.indicator != nil {
+						speedStr := formatSpeed(int64(speed))
+						etaStr := formatDuration(eta)
+						progressMsg := fmt.Sprintf("[%d%%] %s / %s (%s/s, ETA: %s)", 
+							progress, 
+							formatBytes(bytesDone), 
+							formatBytes(bytesTotal),
+							speedStr,
+							etaStr)
+						ot.reporter.indicator.Update(progressMsg)
+					}
+				}
 			}
 			break
 		}
@@ -418,10 +439,59 @@ func (os *OperationSummary) FormatSummary() string {
 
 // formatDuration formats a duration in a human-readable way
 func formatDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
+	if d < time.Second {
+		return "<1s"
+	} else if d < time.Minute {
+		return fmt.Sprintf("%.0fs", d.Seconds())
 	} else if d < time.Hour {
-		return fmt.Sprintf("%.1fm", d.Minutes())
+		mins := int(d.Minutes())
+		secs := int(d.Seconds()) % 60
+		return fmt.Sprintf("%dm%ds", mins, secs)
 	}
-	return fmt.Sprintf("%.1fh", d.Hours())
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	return fmt.Sprintf("%dh%dm", hours, mins)
+}
+
+// formatBytes formats byte count in human-readable units
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+		TB = 1024 * GB
+	)
+	
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+// formatSpeed formats transfer speed in appropriate units
+func formatSpeed(bytesPerSec int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+	
+	switch {
+	case bytesPerSec >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytesPerSec)/float64(GB))
+	case bytesPerSec >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytesPerSec)/float64(MB))
+	case bytesPerSec >= KB:
+		return fmt.Sprintf("%.0f KB", float64(bytesPerSec)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytesPerSec)
+	}
 }

@@ -42,8 +42,11 @@ var clusterCmd = &cobra.Command{
 
 // Global variables for backup flags (to avoid initialization cycle)
 var (
-	backupTypeFlag string
-	baseBackupFlag string
+	backupTypeFlag     string
+	baseBackupFlag     string
+	encryptBackupFlag  bool
+	encryptionKeyFile  string
+	encryptionKeyEnv   string
 )
 
 var singleCmd = &cobra.Command{
@@ -111,6 +114,13 @@ func init() {
 	// Incremental backup flags (single backup only) - using global vars to avoid initialization cycle
 	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental [incremental NOT IMPLEMENTED]")
 	singleCmd.Flags().StringVar(&baseBackupFlag, "base-backup", "", "Path to base backup (required for incremental)")
+	
+	// Encryption flags for all backup commands
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().BoolVar(&encryptBackupFlag, "encrypt", false, "Encrypt backup with AES-256-GCM")
+		cmd.Flags().StringVar(&encryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (32 bytes)")
+		cmd.Flags().StringVar(&encryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key/passphrase")
+	}
 	
 	// Cloud storage flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {

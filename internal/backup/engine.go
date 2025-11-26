@@ -146,9 +146,10 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	e.cfg.BackupDir = validBackupDir
 	
 	if err := os.MkdirAll(e.cfg.BackupDir, 0755); err != nil {
-		prepStep.Fail(fmt.Errorf("failed to create backup directory: %w", err))
-		tracker.Fail(fmt.Errorf("failed to create backup directory: %w", err))
-		return fmt.Errorf("failed to create backup directory: %w", err)
+		err = fmt.Errorf("failed to create backup directory %s. Check write permissions or use --backup-dir to specify writable location: %w", e.cfg.BackupDir, err)
+		prepStep.Fail(err)
+		tracker.Fail(err)
+		return err
 	}
 	prepStep.Complete("Backup directory prepared")
 	tracker.UpdateProgress(10, "Backup directory prepared")
@@ -186,9 +187,10 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	tracker.UpdateProgress(40, "Starting database backup...")
 	
 	if err := e.executeCommandWithProgress(ctx, cmd, outputFile, tracker); err != nil {
-		execStep.Fail(fmt.Errorf("backup execution failed: %w", err))
-		tracker.Fail(fmt.Errorf("backup failed: %w", err))
-		return fmt.Errorf("backup failed: %w", err)
+		err = fmt.Errorf("backup failed for %s: %w. Check database connectivity and disk space", databaseName, err)
+		execStep.Fail(err)
+		tracker.Fail(err)
+		return err
 	}
 	execStep.Complete("Database backup completed")
 	tracker.UpdateProgress(80, "Database backup completed")
@@ -196,9 +198,10 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	// Verify backup file
 	verifyStep := tracker.AddStep("verify", "Verifying backup file")
 	if info, err := os.Stat(outputFile); err != nil {
-		verifyStep.Fail(fmt.Errorf("backup file not created: %w", err))
-		tracker.Fail(fmt.Errorf("backup file not created: %w", err))
-		return fmt.Errorf("backup file not created: %w", err)
+		err = fmt.Errorf("backup file not created at %s. Backup command may have failed silently: %w", outputFile, err)
+		verifyStep.Fail(err)
+		tracker.Fail(err)
+		return err
 	} else {
 		size := formatBytes(info.Size())
 		tracker.SetDetails("file_size", size)
@@ -611,6 +614,7 @@ func (e *Engine) monitorCommandProgress(stderr io.ReadCloser, tracker *progress.
 	defer stderr.Close()
 	
 	scanner := bufio.NewScanner(stderr)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max for performance
 	progressBase := 40 // Start from 40% since command preparation is done
 	progressIncrement := 0
 	

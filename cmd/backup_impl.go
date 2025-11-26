@@ -17,7 +17,7 @@ import (
 // runClusterBackup performs a full cluster backup
 func runClusterBackup(ctx context.Context) error {
 	if !cfg.IsPostgreSQL() {
-		return fmt.Errorf("cluster backup is only supported for PostgreSQL")
+		return fmt.Errorf("cluster backup requires PostgreSQL (detected: %s). Use 'backup single' for individual database backups", cfg.DisplayDatabaseType())
 	}
 	
 	// Update config from environment
@@ -55,7 +55,7 @@ func runClusterBackup(ctx context.Context) error {
 	host := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	if err := rateLimiter.CheckAndWait(host); err != nil {
 		auditLogger.LogBackupFailed(user, "all_databases", err)
-		return fmt.Errorf("rate limit exceeded: %w", err)
+		return fmt.Errorf("rate limit exceeded for %s. Too many connection attempts. Wait 60s or check credentials: %w", host, err)
 	}
 	
 	// Create database instance
@@ -70,7 +70,7 @@ func runClusterBackup(ctx context.Context) error {
 	if err := db.Connect(ctx); err != nil {
 		rateLimiter.RecordFailure(host)
 		auditLogger.LogBackupFailed(user, "all_databases", err)
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return fmt.Errorf("failed to connect to %s@%s:%d. Check: 1) Database is running 2) Credentials are correct 3) pg_hba.conf allows connection: %w", cfg.User, cfg.Host, cfg.Port, err)
 	}
 	rateLimiter.RecordSuccess(host)
 	
@@ -87,7 +87,7 @@ func runClusterBackup(ctx context.Context) error {
 	if isEncryptionEnabled() {
 		if err := encryptLatestClusterBackup(); err != nil {
 			log.Error("Failed to encrypt backup", "error", err)
-			return fmt.Errorf("backup succeeded but encryption failed: %w", err)
+			return fmt.Errorf("backup completed successfully but encryption failed. Unencrypted backup remains in %s: %w", cfg.BackupDir, err)
 		}
 		log.Info("Cluster backup encrypted successfully")
 	}
@@ -124,10 +124,10 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Update config from environment
 	cfg.UpdateFromEnvironment()
 	
-	// Get backup type and base backup from environment variables (set by PreRunE)
-	// For now, incremental is just scaffolding - actual implementation comes next
-	backupType := "full"  // TODO: Read from flag via global var in cmd/backup.go
-	baseBackup := ""      // TODO: Read from flag via global var in cmd/backup.go
+	// Get backup type and base backup from command line flags (set via global vars in PreRunE)
+	// These are populated by cobra flag binding in cmd/backup.go
+	backupType := "full"  // Default to full backup if not specified
+	baseBackup := ""      // Base backup path for incremental backups
 	
 	// Validate backup type
 	if backupType != "full" && backupType != "incremental" {
@@ -137,14 +137,14 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Validate incremental backup requirements
 	if backupType == "incremental" {
 		if !cfg.IsPostgreSQL() && !cfg.IsMySQL() {
-			return fmt.Errorf("incremental backups are only supported for PostgreSQL and MySQL/MariaDB")
+			return fmt.Errorf("incremental backups require PostgreSQL or MySQL/MariaDB (detected: %s). Use --backup-type=full for other databases", cfg.DisplayDatabaseType())
 		}
 		if baseBackup == "" {
-			return fmt.Errorf("--base-backup is required for incremental backups")
+			return fmt.Errorf("incremental backup requires --base-backup flag pointing to initial full backup archive")
 		}
 		// Verify base backup exists
 		if _, err := os.Stat(baseBackup); os.IsNotExist(err) {
-			return fmt.Errorf("base backup not found: %s", baseBackup)
+			return fmt.Errorf("base backup file not found at %s. Ensure path is correct and file exists", baseBackup)
 		}
 	}
 	

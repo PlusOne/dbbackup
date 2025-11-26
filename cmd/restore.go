@@ -219,7 +219,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 		// Check if file exists
 		if _, err := os.Stat(archivePath); err != nil {
-			return fmt.Errorf("archive not found: %s", archivePath)
+			return fmt.Errorf("backup archive not found at %s. Check path or use cloud:// URI for remote backups: %w", archivePath, err)
 		}
 	}
 
