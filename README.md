@@ -1350,7 +1350,9 @@ dbbackup/
 
 ## License
 
-MIT License
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+Copyright 2025 dbbackup Project
 
 ## Testing
 
