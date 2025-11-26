@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"dbbackup/internal/backup"
 	"dbbackup/internal/config"
@@ -111,6 +112,30 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Update config from environment
 	cfg.UpdateFromEnvironment()
 	
+	// Get backup type and base backup from environment variables (set by PreRunE)
+	// For now, incremental is just scaffolding - actual implementation comes next
+	backupType := "full"  // TODO: Read from flag via global var in cmd/backup.go
+	baseBackup := ""      // TODO: Read from flag via global var in cmd/backup.go
+	
+	// Validate backup type
+	if backupType != "full" && backupType != "incremental" {
+		return fmt.Errorf("invalid backup type: %s (must be 'full' or 'incremental')", backupType)
+	}
+	
+	// Validate incremental backup requirements
+	if backupType == "incremental" {
+		if !cfg.IsPostgreSQL() {
+			return fmt.Errorf("incremental backups are currently only supported for PostgreSQL")
+		}
+		if baseBackup == "" {
+			return fmt.Errorf("--base-backup is required for incremental backups")
+		}
+		// Verify base backup exists
+		if _, err := os.Stat(baseBackup); os.IsNotExist(err) {
+			return fmt.Errorf("base backup not found: %s", baseBackup)
+		}
+	}
+	
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
@@ -125,9 +150,14 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	log.Info("Starting single database backup", 
 		"database", databaseName,
 		"db_type", cfg.DatabaseType,
+		"backup_type", backupType,
 		"host", cfg.Host, 
 		"port", cfg.Port,
 		"backup_dir", cfg.BackupDir)
+	
+	if backupType == "incremental" {
+		log.Info("Incremental backup", "base_backup", baseBackup)
+	}
 	
 	// Audit log: backup start
 	user := security.GetCurrentUser()
@@ -171,10 +201,21 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Create backup engine
 	engine := backup.New(cfg, log, db)
 	
-	// Perform single database backup
-	if err := engine.BackupSingle(ctx, databaseName); err != nil {
-		auditLogger.LogBackupFailed(user, databaseName, err)
-		return err
+	// Perform backup based on type
+	var backupErr error
+	if backupType == "incremental" {
+		// Incremental backup - NOT IMPLEMENTED YET
+		log.Warn("Incremental backup is not fully implemented yet - creating full backup instead")
+		log.Warn("Full incremental support coming in v2.2.1")
+		backupErr = engine.BackupSingle(ctx, databaseName)
+	} else {
+		// Full backup
+		backupErr = engine.BackupSingle(ctx, databaseName)
+	}
+	
+	if backupErr != nil {
+		auditLogger.LogBackupFailed(user, databaseName, backupErr)
+		return backupErr
 	}
 	
 	// Audit log: backup success

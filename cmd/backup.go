@@ -40,11 +40,28 @@ var clusterCmd = &cobra.Command{
 	},
 }
 
+// Global variables for backup flags (to avoid initialization cycle)
+var (
+	backupTypeFlag string
+	baseBackupFlag string
+)
+
 var singleCmd = &cobra.Command{
 	Use:   "single [database]",
 	Short: "Create single database backup",
-	Long:  `Create a backup of a single database with all its data and schema`,
-	Args:  cobra.MaximumNArgs(1),
+	Long: `Create a backup of a single database with all its data and schema.
+
+Backup Types:
+  --backup-type full         - Complete full backup (default)
+  --backup-type incremental  - Incremental backup (only changed files since base) [NOT IMPLEMENTED]
+
+Examples:
+  # Full backup (default)
+  dbbackup backup single mydb
+  
+  # Incremental backup (requires previous full backup) [COMING IN v2.2.1]
+  dbbackup backup single mydb --backup-type incremental --base-backup mydb_20250126.tar.gz`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dbName := ""
 		if len(args) > 0 {
@@ -90,6 +107,10 @@ func init() {
 	backupCmd.AddCommand(clusterCmd)
 	backupCmd.AddCommand(singleCmd)
 	backupCmd.AddCommand(sampleCmd)
+	
+	// Incremental backup flags (single backup only) - using global vars to avoid initialization cycle
+	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental [incremental NOT IMPLEMENTED]")
+	singleCmd.Flags().StringVar(&baseBackupFlag, "base-backup", "", "Path to base backup (required for incremental)")
 	
 	// Cloud storage flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
