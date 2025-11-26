@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"dbbackup/internal/backup"
 	"dbbackup/internal/config"
@@ -78,6 +81,15 @@ func runClusterBackup(ctx context.Context) error {
 	if err := engine.BackupCluster(ctx); err != nil {
 		auditLogger.LogBackupFailed(user, "all_databases", err)
 		return err
+	}
+	
+	// Apply encryption if requested
+	if isEncryptionEnabled() {
+		if err := encryptLatestClusterBackup(); err != nil {
+			log.Error("Failed to encrypt backup", "error", err)
+			return fmt.Errorf("backup succeeded but encryption failed: %w", err)
+		}
+		log.Info("Cluster backup encrypted successfully")
 	}
 	
 	// Audit log: backup success
@@ -218,6 +230,15 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		return backupErr
 	}
 	
+	// Apply encryption if requested
+	if isEncryptionEnabled() {
+		if err := encryptLatestBackup(databaseName); err != nil {
+			log.Error("Failed to encrypt backup", "error", err)
+			return fmt.Errorf("backup succeeded but encryption failed: %w", err)
+		}
+		log.Info("Backup encrypted successfully")
+	}
+	
 	// Audit log: backup success
 	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, 0)
 	
@@ -338,6 +359,15 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 		return err
 	}
 	
+	// Apply encryption if requested
+	if isEncryptionEnabled() {
+		if err := encryptLatestBackup(databaseName); err != nil {
+			log.Error("Failed to encrypt backup", "error", err)
+			return fmt.Errorf("backup succeeded but encryption failed: %w", err)
+		}
+		log.Info("Sample backup encrypted successfully")
+	}
+	
 	// Audit log: backup success
 	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, 0)
 	
@@ -353,4 +383,125 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	}
 	
 	return nil
+}
+// encryptLatestBackup finds and encrypts the most recent backup for a database
+func encryptLatestBackup(databaseName string) error {
+	// Load encryption key
+	key, err := loadEncryptionKey(encryptionKeyFile, encryptionKeyEnv)
+	if err != nil {
+		return err
+	}
+
+	// Find most recent backup file for this database
+	backupPath, err := findLatestBackup(cfg.BackupDir, databaseName)
+	if err != nil {
+		return err
+	}
+
+	// Encrypt the backup
+	return backup.EncryptBackupFile(backupPath, key, log)
+}
+
+// encryptLatestClusterBackup finds and encrypts the most recent cluster backup
+func encryptLatestClusterBackup() error {
+	// Load encryption key
+	key, err := loadEncryptionKey(encryptionKeyFile, encryptionKeyEnv)
+	if err != nil {
+		return err
+	}
+
+	// Find most recent cluster backup
+	backupPath, err := findLatestClusterBackup(cfg.BackupDir)
+	if err != nil {
+		return err
+	}
+
+	// Encrypt the backup
+	return backup.EncryptBackupFile(backupPath, key, log)
+}
+
+// findLatestBackup finds the most recently created backup file for a database
+func findLatestBackup(backupDir, databaseName string) (string, error) {
+entries, err := os.ReadDir(backupDir)
+if err != nil {
+return "", fmt.Errorf("failed to read backup directory: %w", err)
+}
+
+var latestPath string
+var latestTime time.Time
+
+prefix := "db_" + databaseName + "_"
+for _, entry := range entries {
+if entry.IsDir() {
+continue
+}
+
+name := entry.Name()
+// Skip metadata files and already encrypted files
+if strings.HasSuffix(name, ".meta.json") || strings.HasSuffix(name, ".encrypted") {
+continue
+}
+
+// Match database backup files
+if strings.HasPrefix(name, prefix) && (strings.HasSuffix(name, ".dump") || 
+strings.HasSuffix(name, ".dump.gz") || strings.HasSuffix(name, ".sql.gz")) {
+info, err := entry.Info()
+if err != nil {
+continue
+}
+
+if info.ModTime().After(latestTime) {
+latestTime = info.ModTime()
+latestPath = filepath.Join(backupDir, name)
+}
+}
+}
+
+if latestPath == "" {
+return "", fmt.Errorf("no backup found for database: %s", databaseName)
+}
+
+return latestPath, nil
+}
+
+// findLatestClusterBackup finds the most recently created cluster backup
+func findLatestClusterBackup(backupDir string) (string, error) {
+entries, err := os.ReadDir(backupDir)
+if err != nil {
+return "", fmt.Errorf("failed to read backup directory: %w", err)
+}
+
+var latestPath string
+var latestTime time.Time
+
+for _, entry := range entries {
+if entry.IsDir() {
+continue
+}
+
+name := entry.Name()
+// Skip metadata files and already encrypted files
+if strings.HasSuffix(name, ".meta.json") || strings.HasSuffix(name, ".encrypted") {
+continue
+}
+
+// Match cluster backup files
+if strings.HasPrefix(name, "cluster_") && strings.HasSuffix(name, ".tar.gz") {
+info, err := entry.Info()
+if err != nil {
+continue
+}
+
+if info.ModTime().After(latestTime) {
+latestTime = info.ModTime()
+latestPath = filepath.Join(backupDir, name)
+}
+}
+}
+
+if latestPath == "" {
+return "", fmt.Errorf("no cluster backup found")
+}
+
+return latestPath, nil
 }

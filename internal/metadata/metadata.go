@@ -30,6 +30,10 @@ type BackupMetadata struct {
 	Duration        float64           `json:"duration_seconds"`
 	ExtraInfo       map[string]string `json:"extra_info,omitempty"`
 	
+	// Encryption fields (v2.3+)
+	Encrypted           bool   `json:"encrypted"`                      // Whether backup is encrypted
+	EncryptionAlgorithm string `json:"encryption_algorithm,omitempty"` // e.g., "aes-256-gcm"
+	
 	// Incremental backup fields (v2.2+)
 	Incremental *IncrementalMetadata `json:"incremental,omitempty"` // Only present for incremental backups
 }
