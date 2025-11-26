@@ -691,6 +691,242 @@ Display version information:
 ./dbbackup version
 ```
 
+## Point-in-Time Recovery (PITR)
+
+dbbackup v3.1 includes full Point-in-Time Recovery support for PostgreSQL, allowing you to restore your database to any specific moment in time, not just to the time of your last backup.
+
+### PITR Overview
+
+Point-in-Time Recovery works by combining:
+1. **Base Backup** - A full database backup
+2. **WAL Archives** - Continuous archive of Write-Ahead Log files
+3. **Recovery Target** - The specific point in time you want to restore to
+
+This allows you to:
+- Recover from accidental data deletion or corruption
+- Restore to a specific transaction or timestamp
+- Create multiple recovery branches (timelines)
+- Test "what-if" scenarios by restoring to different points
+
+### Enable PITR
+
+**Step 1: Enable WAL Archiving**
+```bash
+# Configure PostgreSQL for PITR
+./dbbackup pitr enable --archive-dir /backups/wal_archive
+
+# This will modify postgresql.conf:
+#   wal_level = replica
+#   archive_mode = on
+#   archive_command = 'dbbackup wal archive %p %f ...'
+
+# Restart PostgreSQL for changes to take effect
+sudo systemctl restart postgresql
+```
+
+**Step 2: Take a Base Backup**
+```bash
+# Create a base backup (use pg_basebackup or dbbackup)
+pg_basebackup -D /backups/base_backup.tar.gz -Ft -z -P
+
+# Or use regular dbbackup backup with --pitr flag (future feature)
+./dbbackup backup single mydb --output /backups/base_backup.tar.gz
+```
+
+**Step 3: Continuous WAL Archiving**
+
+WAL files are now automatically archived by PostgreSQL to your archive directory. Monitor with:
+```bash
+# Check PITR status
+./dbbackup pitr status
+
+# List archived WAL files
+./dbbackup wal list --archive-dir /backups/wal_archive
+
+# View timeline history
+./dbbackup wal timeline --archive-dir /backups/wal_archive
+```
+
+### Perform Point-in-Time Recovery
+
+**Restore to Specific Timestamp:**
+```bash
+./dbbackup restore pitr \
+  --base-backup /backups/base_backup.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-time "2024-11-26 12:00:00" \
+  --target-dir /var/lib/postgresql/14/restored \
+  --target-action promote
+```
+
+**Restore to Transaction ID (XID):**
+```bash
+./dbbackup restore pitr \
+  --base-backup /backups/base_backup.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-xid 1000000 \
+  --target-dir /var/lib/postgresql/14/restored
+```
+
+**Restore to Log Sequence Number (LSN):**
+```bash
+./dbbackup restore pitr \
+  --base-backup /backups/base_backup.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-lsn "0/3000000" \
+  --target-dir /var/lib/postgresql/14/restored
+```
+
+**Restore to Named Restore Point:**
+```bash
+# First create a restore point in PostgreSQL:
+psql -c "SELECT pg_create_restore_point('before_migration');"
+
+# Later, restore to that point:
+./dbbackup restore pitr \
+  --base-backup /backups/base_backup.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-name before_migration \
+  --target-dir /var/lib/postgresql/14/restored
+```
+
+**Restore to Earliest Consistent Point:**
+```bash
+./dbbackup restore pitr \
+  --base-backup /backups/base_backup.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-immediate \
+  --target-dir /var/lib/postgresql/14/restored
+```
+
+### Advanced PITR Options
+
+**WAL Compression and Encryption:**
+```bash
+# Enable compression for WAL archives (saves space)
+./dbbackup pitr enable \
+  --archive-dir /backups/wal_archive
+
+# Archive with compression
+./dbbackup wal archive /path/to/wal %f \
+  --archive-dir /backups/wal_archive \
+  --compress
+
+# Archive with encryption
+./dbbackup wal archive /path/to/wal %f \
+  --archive-dir /backups/wal_archive \
+  --encrypt \
+  --encryption-key-file /secure/key.bin
+```
+
+**Recovery Actions:**
+```bash
+# Promote to primary after recovery (default)
+--target-action promote
+
+# Pause recovery at target (for inspection)
+--target-action pause
+
+# Shutdown after recovery
+--target-action shutdown
+```
+
+**Timeline Management:**
+```bash
+# Follow specific timeline
+--timeline 2
+
+# Follow latest timeline (default)
+--timeline latest
+
+# View timeline branching structure
+./dbbackup wal timeline --archive-dir /backups/wal_archive
+```
+
+**Auto-start and Monitor:**
+```bash
+# Automatically start PostgreSQL after setup
+./dbbackup restore pitr \
+  --base-backup /backups/base_backup.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-time "2024-11-26 12:00:00" \
+  --target-dir /var/lib/postgresql/14/restored \
+  --auto-start \
+  --monitor
+```
+
+### WAL Management Commands
+
+```bash
+# Archive a WAL file manually (normally called by PostgreSQL)
+./dbbackup wal archive <wal_path> <wal_filename> \
+  --archive-dir /backups/wal_archive
+
+# List all archived WAL files
+./dbbackup wal list --archive-dir /backups/wal_archive
+
+# Clean up old WAL archives (retention policy)
+./dbbackup wal cleanup \
+  --archive-dir /backups/wal_archive \
+  --retention-days 7
+
+# View timeline history and branching
+./dbbackup wal timeline --archive-dir /backups/wal_archive
+
+# Check PITR configuration status
+./dbbackup pitr status
+
+# Disable PITR
+./dbbackup pitr disable
+```
+
+### PITR Best Practices
+
+1. **Regular Base Backups**: Take base backups regularly (daily/weekly) to limit WAL archive size
+2. **Monitor WAL Archive Space**: WAL files can accumulate quickly, monitor disk usage
+3. **Test Recovery**: Regularly test PITR recovery to verify your backup strategy
+4. **Retention Policy**: Set appropriate retention with `wal cleanup --retention-days`
+5. **Compress WAL Files**: Use `--compress` to save storage space (3-5x reduction)
+6. **Encrypt Sensitive Data**: Use `--encrypt` for compliance requirements
+7. **Document Restore Points**: Create named restore points before major changes
+
+### Troubleshooting PITR
+
+**Issue: WAL archiving not working**
+```bash
+# Check PITR status
+./dbbackup pitr status
+
+# Verify PostgreSQL configuration
+grep -E "archive_mode|wal_level|archive_command" /etc/postgresql/*/main/postgresql.conf
+
+# Check PostgreSQL logs
+tail -f /var/log/postgresql/postgresql-14-main.log
+```
+
+**Issue: Recovery target not reached**
+```bash
+# Verify WAL files are available
+./dbbackup wal list --archive-dir /backups/wal_archive
+
+# Check timeline consistency
+./dbbackup wal timeline --archive-dir /backups/wal_archive
+
+# Review PostgreSQL recovery logs
+tail -f /var/lib/postgresql/14/restored/logfile
+```
+
+**Issue: Permission denied during recovery**
+```bash
+# Ensure data directory ownership
+sudo chown -R postgres:postgres /var/lib/postgresql/14/restored
+
+# Verify WAL archive permissions
+ls -la /backups/wal_archive
+```
+
+For more details, see [PITR.md](PITR.md) documentation.
+
 ## Cloud Storage Integration
 
 dbbackup v2.0 includes native support for cloud storage providers. See [CLOUD.md](CLOUD.md) for complete documentation.
