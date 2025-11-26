@@ -98,6 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Testing and what-if scenarios
 - Timeline branching for parallel recovery paths
 
+### Changed
+- **Licensing**: Added Apache License 2.0 to the project (LICENSE file)
+
 ## [3.0.0] - 2025-11-26
 
 ### Added - 🔐 AES-256-GCM Encryption (Phase 4)

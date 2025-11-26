@@ -2,6 +2,8 @@
 
 ![dbbackup](dbbackup.png)
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Professional database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 ## Key Features
@@ -1430,3 +1432,7 @@ The test suite validates:
 - **Observable**: Structured logging, metrics collection, progress tracking with ETA
 
 dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases. Successfully tested with 42GB databases containing 35,000 large objects.
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
