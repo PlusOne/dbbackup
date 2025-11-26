@@ -25,10 +25,23 @@ type BackupMetadata struct {
 	SizeBytes       int64             `json:"size_bytes"`
 	SHA256          string            `json:"sha256"`
 	Compression     string            `json:"compression"` // none, gzip, pigz
-	BackupType      string            `json:"backup_type"` // full, incremental (for v2.0)
+	BackupType      string            `json:"backup_type"` // full, incremental (for v2.2)
 	BaseBackup      string            `json:"base_backup,omitempty"`
 	Duration        float64           `json:"duration_seconds"`
 	ExtraInfo       map[string]string `json:"extra_info,omitempty"`
+	
+	// Incremental backup fields (v2.2+)
+	Incremental *IncrementalMetadata `json:"incremental,omitempty"` // Only present for incremental backups
+}
+
+// IncrementalMetadata contains metadata specific to incremental backups
+type IncrementalMetadata struct {
+	BaseBackupID        string    `json:"base_backup_id"`        // SHA-256 of base backup
+	BaseBackupPath      string    `json:"base_backup_path"`      // Filename of base backup
+	BaseBackupTimestamp time.Time `json:"base_backup_timestamp"` // When base backup was created
+	IncrementalFiles    int       `json:"incremental_files"`     // Number of changed files
+	TotalSize           int64     `json:"total_size"`            // Total size of changed files (bytes)
+	BackupChain         []string  `json:"backup_chain"`          // Chain: [base, incr1, incr2, ...]
 }
 
 // ClusterMetadata contains metadata for cluster backups
