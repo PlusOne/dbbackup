@@ -8,6 +8,8 @@ Professional database backup and restore utility for PostgreSQL, MySQL, and Mari
 
 - Multi-database support: PostgreSQL, MySQL, MariaDB
 - Backup modes: Single database, cluster, sample data
+- **🔐 AES-256-GCM encryption** for secure backups (v3.0)
+- **📦 Incremental backups** for PostgreSQL and MySQL (v3.0)
 - **Cloud storage integration: S3, MinIO, B2, Azure Blob, Google Cloud Storage**
 - Restore operations with safety checks and validation
 - Automatic CPU detection and parallel processing
@@ -329,6 +331,119 @@ Create reduced-size backup for testing/development:
 ```
 
 **Warning:** Sample backups may break referential integrity.
+
+#### 🔐 Encrypted Backups (v3.0)
+
+Encrypt backups with AES-256-GCM for secure storage:
+
+```bash
+./dbbackup backup single myapp_db --encrypt --encryption-key-file key.txt
+```
+
+**Encryption Options:**
+
+- `--encrypt` - Enable AES-256-GCM encryption
+- `--encryption-key-file STRING` - Path to encryption key file (32 bytes, raw or base64)
+- `--encryption-key-env STRING` - Environment variable containing encryption key (default: DBBACKUP_ENCRYPTION_KEY)
+
+**Examples:**
+
+```bash
+# Generate encryption key
+head -c 32 /dev/urandom | base64 > encryption.key
+
+# Encrypted backup
+./dbbackup backup single production_db \
+  --encrypt \
+  --encryption-key-file encryption.key
+
+# Using environment variable
+export DBBACKUP_ENCRYPTION_KEY=$(cat encryption.key)
+./dbbackup backup cluster --encrypt
+
+# Using passphrase (auto-derives key with PBKDF2)
+echo "my-secure-passphrase" > passphrase.txt
+./dbbackup backup single mydb --encrypt --encryption-key-file passphrase.txt
+```
+
+**Encryption Features:**
+- Algorithm: AES-256-GCM (authenticated encryption)
+- Key derivation: PBKDF2-SHA256 (600,000 iterations)
+- Streaming encryption (memory-efficient for large backups)
+- Automatic decryption on restore (detects encrypted backups)
+
+**Restore encrypted backup:**
+
+```bash
+./dbbackup restore single myapp_db_20251126.sql.gz \
+  --encryption-key-file encryption.key \
+  --target myapp_db \
+  --confirm
+```
+
+Encryption is automatically detected - no need to specify `--encrypted` flag on restore.
+
+#### 📦 Incremental Backups (v3.0)
+
+Create space-efficient incremental backups (PostgreSQL & MySQL):
+
+```bash
+# Full backup (base)
+./dbbackup backup single myapp_db --backup-type full
+
+# Incremental backup (only changed files since base)
+./dbbackup backup single myapp_db \
+  --backup-type incremental \
+  --base-backup /backups/myapp_db_20251126.tar.gz
+```
+
+**Incremental Options:**
+
+- `--backup-type STRING` - Backup type: full or incremental (default: full)
+- `--base-backup STRING` - Path to base backup (required for incremental)
+
+**Examples:**
+
+```bash
+# PostgreSQL incremental backup
+sudo -u postgres ./dbbackup backup single production_db \
+  --backup-type full
+
+# Wait for database changes...
+
+sudo -u postgres ./dbbackup backup single production_db \
+  --backup-type incremental \
+  --base-backup /var/lib/pgsql/db_backups/production_db_20251126_100000.tar.gz
+
+# MySQL incremental backup
+./dbbackup backup single wordpress \
+  --db-type mysql \
+  --backup-type incremental \
+  --base-backup /root/db_backups/wordpress_20251126.tar.gz
+
+# Combined: Encrypted + Incremental
+./dbbackup backup single myapp_db \
+  --backup-type incremental \
+  --base-backup myapp_db_base.tar.gz \
+  --encrypt \
+  --encryption-key-file key.txt
+```
+
+**Incremental Features:**
+- Change detection: mtime-based (PostgreSQL & MySQL)
+- Archive format: tar.gz (only changed files)
+- Metadata: Tracks backup chain (base → incremental)
+- Restore: Automatically applies base + incremental
+- Space savings: 70-95% smaller than full backups (typical)
+
+**Restore incremental backup:**
+
+```bash
+./dbbackup restore incremental \
+  --base-backup myapp_db_base.tar.gz \
+  --incremental-backup myapp_db_incr_20251126.tar.gz \
+  --target /restore/path
+```
 
 ### Restore Operations
 
