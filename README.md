@@ -8,11 +8,12 @@ Professional database backup and restore utility for PostgreSQL, MySQL, and Mari
 
 - Multi-database support: PostgreSQL, MySQL, MariaDB
 - Backup modes: Single database, cluster, sample data
+- **Cloud storage integration: S3, MinIO, B2, Azure Blob, Google Cloud Storage**
 - Restore operations with safety checks and validation
 - Automatic CPU detection and parallel processing
 - Streaming compression for large databases
 - Interactive terminal UI with progress tracking
-- Cross-platform binaries (Linux, macOS, BSD)
+- Cross-platform binaries (Linux, macOS, BSD, Windows)
 
 ## Installation
 
@@ -214,6 +215,10 @@ Restore full cluster:
 | `--auto-detect-cores` | Auto-detect CPU cores | true |
 | `--no-config` | Skip loading .dbbackup.conf | false |
 | `--no-save-config` | Prevent saving configuration | false |
+| `--cloud` | Cloud storage URI (s3://, azure://, gcs://) | (empty) |
+| `--cloud-provider` | Cloud provider (s3, minio, b2, azure, gcs) | (empty) |
+| `--cloud-bucket` | Cloud bucket/container name | (empty) |
+| `--cloud-region` | Cloud region | (empty) |
 | `--debug` | Enable debug logging | false |
 | `--no-color` | Disable colored output | false |
 
@@ -570,6 +575,80 @@ Display version information:
 ```bash
 ./dbbackup version
 ```
+
+## Cloud Storage Integration
+
+dbbackup v2.0 includes native support for cloud storage providers. See [CLOUD.md](CLOUD.md) for complete documentation.
+
+### Quick Start - Cloud Backups
+
+**Configure cloud provider in TUI:**
+```bash
+# Launch interactive mode
+./dbbackup interactive
+
+# Navigate to: Configuration Settings
+# Set: Cloud Storage Enabled = true
+# Set: Cloud Provider = s3 (or azure, gcs, minio, b2)
+# Set: Cloud Bucket/Container = your-bucket-name
+# Set: Cloud Region = us-east-1 (if applicable)
+# Set: Cloud Auto-Upload = true
+```
+
+**Command-line cloud backup:**
+```bash
+# Backup directly to S3
+./dbbackup backup single mydb --cloud s3://my-bucket/backups/
+
+# Backup to Azure Blob Storage
+./dbbackup backup single mydb \
+  --cloud azure://my-container/backups/ \
+  --cloud-access-key myaccount \
+  --cloud-secret-key "account-key"
+
+# Backup to Google Cloud Storage
+./dbbackup backup single mydb \
+  --cloud gcs://my-bucket/backups/ \
+  --cloud-access-key /path/to/service-account.json
+
+# Restore from cloud
+./dbbackup restore single s3://my-bucket/backups/mydb_20251126.dump \
+  --target mydb_restored \
+  --confirm
+```
+
+**Supported Providers:**
+- **AWS S3** - `s3://bucket/path`
+- **MinIO** - `minio://bucket/path` (self-hosted S3-compatible)
+- **Backblaze B2** - `b2://bucket/path`
+- **Azure Blob Storage** - `azure://container/path` (native support)
+- **Google Cloud Storage** - `gcs://bucket/path` (native support)
+
+**Environment Variables:**
+```bash
+# AWS S3 / MinIO / B2
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_REGION="us-east-1"
+
+# Azure Blob Storage
+export AZURE_STORAGE_ACCOUNT="myaccount"
+export AZURE_STORAGE_KEY="account-key"
+
+# Google Cloud Storage
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+```
+
+**Features:**
+- ✅ Streaming uploads (memory efficient)
+- ✅ Multipart upload for large files (>100MB)
+- ✅ Progress tracking
+- ✅ Automatic metadata sync (.sha256, .info files)
+- ✅ Restore directly from cloud URIs
+- ✅ Cloud backup verification
+- ✅ TUI integration for all cloud providers
+
+See [CLOUD.md](CLOUD.md) for detailed setup guides, testing with Docker, and advanced configuration.
 
 ## Configuration
 
