@@ -1199,24 +1199,6 @@ SSL modes: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`
 ./dbbackup backup single mydb --ssl-mode verify-full
 ```
 
-## Disaster Recovery
-
-Complete automated disaster recovery test:
-
-```bash
-sudo ./disaster_recovery_test.sh
-```
-
-This script:
-
-1. Backs up entire cluster with maximum performance
-2. Documents pre-backup state
-3. Destroys all user databases (confirmation required)
-4. Restores full cluster from backup
-5. Verifies restoration success
-
-**Warning:** Destructive operation. Use only in test environments.
-
 ## Troubleshooting
 
 ### Connection Issues
@@ -1339,7 +1321,6 @@ dbbackup/
 │   ├── progress/                # Progress tracking
 │   └── tui/                     # Interactive UI
 ├── bin/                         # Pre-compiled binaries
-├── disaster_recovery_test.sh    # DR testing script
 └── build_all.sh                 # Multi-platform build
 ```
 
@@ -1354,77 +1335,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 Copyright 2025 dbbackup Project
 
-## Testing
-
-### Automated QA Tests
-
-Comprehensive test suite covering all functionality:
-
-```bash
-./run_qa_tests.sh
-```
-
-**Test Coverage:**
-- ✅ 24/24 tests passing (100%)
-- Basic functionality (CLI operations, help, version)
-- Backup file creation and validation
-- Checksum and metadata generation
-- Configuration management
-- Error handling and edge cases
-- Data integrity verification
-
-**CI/CD Integration:**
-```bash
-# Quick validation
-./run_qa_tests.sh
-
-# Full test suite with detailed output
-./run_qa_tests.sh 2>&1 | tee qa_results.log
-```
-
-The test suite validates:
-- Single database backups
-- File creation (.dump, .sha256, .info)
-- Checksum validation
-- Configuration loading/saving
-- Retention policy enforcement
-- Error handling for invalid inputs
-- PostgreSQL dump format verification
-
 ## Recent Improvements
-
-### v2.0 - Production-Ready Release (November 2025)
-
-**Quality Assurance:**
-- ✅ **100% Test Coverage**: All 24 automated tests passing
-- ✅ **Zero Critical Issues**: Production-validated and deployment-ready
-- ✅ **Configuration Bug Fixed**: CLI flags now correctly override config file values
-
-**Reliability Enhancements:**
-- **Context Cleanup**: Proper resource cleanup with sync.Once and io.Closer interface prevents memory leaks
-- **Process Management**: Thread-safe process tracking with automatic cleanup on exit
-- **Error Classification**: Regex-based error pattern matching for robust error handling
-- **Performance Caching**: Disk space checks cached with 30-second TTL to reduce syscall overhead
-- **Metrics Collection**: Structured logging with operation metrics for observability
-
-**Configuration Management:**
-- **Persistent Configuration**: Auto-save/load settings to .dbbackup.conf in current directory
-- **Per-Directory Settings**: Each project maintains its own database connection parameters
-- **Flag Priority Fixed**: Command-line flags always take precedence over saved configuration
-- **Security**: Passwords excluded from saved configuration files
-
-**Performance Optimizations:**
-- **Parallel Cluster Operations**: Worker pool pattern for concurrent database backup/restore
-- **Memory Efficiency**: Streaming command output eliminates OOM errors on large databases
-- **Optimized Goroutines**: Ticker-based progress indicators reduce CPU overhead
-- **Configurable Concurrency**: Control parallel database operations via CLUSTER_PARALLELISM
-
-**Cross-Platform Support:**
-- **Platform-Specific Implementations**: Separate disk space and process management for Unix/Windows/BSD
-- **Build Constraints**: Go build tags ensure correct compilation for each platform
-- **Tested Platforms**: Linux (x64/ARM), macOS (x64/ARM), Windows (x64/ARM), FreeBSD, OpenBSD
-
-## Why dbbackup?
 
 - **Production-Ready**: 100% test coverage, zero critical issues, fully validated
 - **Reliable**: Thread-safe process management, comprehensive error handling, automatic cleanup
