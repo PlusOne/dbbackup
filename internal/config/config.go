@@ -76,6 +76,12 @@ type Config struct {
 	AllowRoot      bool // Allow running as root/Administrator
 	CheckResources bool // Check resource limits before operations
 
+	// PITR (Point-in-Time Recovery) options
+	PITREnabled    bool   // Enable WAL archiving for PITR
+	WALArchiveDir  string // Directory to store WAL archives
+	WALCompression bool   // Compress WAL files
+	WALEncryption  bool   // Encrypt WAL files
+
 	// TUI automation options (for testing)
 	TUIAutoSelect   int    // Auto-select menu option (-1 = disabled)
 	TUIAutoDatabase string // Pre-fill database name
