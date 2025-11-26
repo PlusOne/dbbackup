@@ -13,6 +13,7 @@ import (
 	"dbbackup/internal/backup"
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/database"
+	"dbbackup/internal/pitr"
 	"dbbackup/internal/restore"
 	"dbbackup/internal/security"
 
@@ -33,6 +34,15 @@ var (
 	// Encryption flags
 	restoreEncryptionKeyFile string
 	restoreEncryptionKeyEnv  string = "DBBACKUP_ENCRYPTION_KEY"
+	
+	// PITR restore flags (additional to pitr.go)
+	pitrBaseBackup  string
+	pitrWALArchive  string
+	pitrTargetDir   string
+	pitrInclusive   bool
+	pitrSkipExtract bool
+	pitrAutoStart   bool
+	pitrMonitor     bool
 )
 
 // restoreCmd represents the restore command
@@ -146,11 +156,61 @@ Shows information about each archive:
 	RunE: runRestoreList,
 }
 
+// restorePITRCmd performs Point-in-Time Recovery
+var restorePITRCmd = &cobra.Command{
+	Use:   "pitr",
+	Short: "Point-in-Time Recovery (PITR) restore",
+	Long: `Restore PostgreSQL database to a specific point in time using WAL archives.
+
+PITR allows restoring to any point in time, not just the backup moment.
+Requires a base backup and continuous WAL archives.
+
+Recovery Target Types:
+  --target-time      Restore to specific timestamp
+  --target-xid       Restore to transaction ID
+  --target-lsn       Restore to Log Sequence Number
+  --target-name      Restore to named restore point
+  --target-immediate Restore to earliest consistent point
+
+Examples:
+  # Restore to specific time
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-time "2024-11-26 12:00:00" \\
+    --target-dir /var/lib/postgresql/14/main
+
+  # Restore to transaction ID
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-xid 1000000 \\
+    --target-dir /var/lib/postgresql/14/main \\
+    --auto-start
+
+  # Restore to LSN
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-lsn "0/3000000" \\
+    --target-dir /var/lib/postgresql/14/main
+
+  # Restore to earliest consistent point
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-immediate \\
+    --target-dir /var/lib/postgresql/14/main
+`,
+	RunE: runRestorePITR,
+}
+
 func init() {
 	rootCmd.AddCommand(restoreCmd)
 	restoreCmd.AddCommand(restoreSingleCmd)
 	restoreCmd.AddCommand(restoreClusterCmd)
 	restoreCmd.AddCommand(restoreListCmd)
+	restoreCmd.AddCommand(restorePITRCmd)
 
 	// Single restore flags
 	restoreSingleCmd.Flags().BoolVar(&restoreConfirm, "confirm", false, "Confirm and execute restore (required)")
@@ -173,6 +233,26 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
+	
+	// PITR restore flags
+	restorePITRCmd.Flags().StringVar(&pitrBaseBackup, "base-backup", "", "Path to base backup file (.tar.gz) (required)")
+	restorePITRCmd.Flags().StringVar(&pitrWALArchive, "wal-archive", "", "Path to WAL archive directory (required)")
+	restorePITRCmd.Flags().StringVar(&pitrTargetTime, "target-time", "", "Restore to timestamp (YYYY-MM-DD HH:MM:SS)")
+	restorePITRCmd.Flags().StringVar(&pitrTargetXID, "target-xid", "", "Restore to transaction ID")
+	restorePITRCmd.Flags().StringVar(&pitrTargetLSN, "target-lsn", "", "Restore to LSN (e.g., 0/3000000)")
+	restorePITRCmd.Flags().StringVar(&pitrTargetName, "target-name", "", "Restore to named restore point")
+	restorePITRCmd.Flags().BoolVar(&pitrTargetImmediate, "target-immediate", false, "Restore to earliest consistent point")
+	restorePITRCmd.Flags().StringVar(&pitrRecoveryAction, "target-action", "promote", "Action after recovery (promote|pause|shutdown)")
+	restorePITRCmd.Flags().StringVar(&pitrTargetDir, "target-dir", "", "PostgreSQL data directory (required)")
+	restorePITRCmd.Flags().StringVar(&pitrWALSource, "timeline", "latest", "Timeline to follow (latest or timeline ID)")
+	restorePITRCmd.Flags().BoolVar(&pitrInclusive, "inclusive", true, "Include target transaction/time")
+	restorePITRCmd.Flags().BoolVar(&pitrSkipExtract, "skip-extraction", false, "Skip base backup extraction (data dir exists)")
+	restorePITRCmd.Flags().BoolVar(&pitrAutoStart, "auto-start", false, "Automatically start PostgreSQL after setup")
+	restorePITRCmd.Flags().BoolVar(&pitrMonitor, "monitor", false, "Monitor recovery progress (requires --auto-start)")
+	
+	restorePITRCmd.MarkFlagRequired("base-backup")
+	restorePITRCmd.MarkFlagRequired("wal-archive")
+	restorePITRCmd.MarkFlagRequired("target-dir")
 }
 
 // runRestoreSingle restores a single database
@@ -604,4 +684,54 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
+}
+
+// runRestorePITR performs Point-in-Time Recovery
+func runRestorePITR(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+
+	// Parse recovery target
+	target, err := pitr.ParseRecoveryTarget(
+		pitrTargetTime,
+		pitrTargetXID,
+		pitrTargetLSN,
+		pitrTargetName,
+		pitrTargetImmediate,
+		pitrRecoveryAction,
+		pitrWALSource,
+		pitrInclusive,
+	)
+	if err != nil {
+		return fmt.Errorf("invalid recovery target: %w", err)
+	}
+
+	// Display recovery target info
+	log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Info("  Point-in-Time Recovery (PITR)")
+	log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Info("")
+	log.Info(target.String())
+	log.Info("")
+
+	// Create restore orchestrator
+	orchestrator := pitr.NewRestoreOrchestrator(cfg, log)
+
+	// Prepare restore options
+	opts := &pitr.RestoreOptions{
+		BaseBackupPath:  pitrBaseBackup,
+		WALArchiveDir:   pitrWALArchive,
+		Target:          target,
+		TargetDataDir:   pitrTargetDir,
+		SkipExtraction:  pitrSkipExtract,
+		AutoStart:       pitrAutoStart,
+		MonitorProgress: pitrMonitor,
+	}
+
+	// Perform PITR restore
+	if err := orchestrator.RestorePointInTime(ctx, opts); err != nil {
+		return fmt.Errorf("PITR restore failed: %w", err)
+	}
+
+	log.Info("✅ PITR restore completed successfully")
+	return nil
 }
