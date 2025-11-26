@@ -3,8 +3,13 @@
 ![dbbackup](dbbackup.png)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://git.uuxo.net/PlusOne/dbbackup)
+[![Release](https://img.shields.io/badge/Release-v3.1.0-blue)](https://git.uuxo.net/PlusOne/dbbackup/releases)
 
 Professional database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
+
+**🎯 Production-Ready** | **🔒 Encrypted Backups** | **☁️ Cloud Storage** | **🔄 Point-in-Time Recovery**
 
 ## Key Features
 
@@ -25,7 +30,7 @@ Professional database backup and restore utility for PostgreSQL, MySQL, and Mari
 
 **Pull from registry:**
 ```bash
-docker pull git.uuxo.net/uuxo/dbbackup:latest
+docker pull git.uuxo.net/PlusOne/dbbackup:latest
 ```
 
 **Quick start:**
@@ -36,47 +41,47 @@ docker run --rm \
   -e PGHOST=your-host \
   -e PGUSER=postgres \
   -e PGPASSWORD=secret \
-  git.uuxo.net/uuxo/dbbackup:latest backup single mydb
+  git.uuxo.net/PlusOne/dbbackup:latest backup single mydb
 
 # Interactive mode
 docker run --rm -it \
   -v $(pwd)/backups:/backups \
-  git.uuxo.net/uuxo/dbbackup:latest interactive
+  git.uuxo.net/PlusOne/dbbackup:latest interactive
 ```
 
 See [DOCKER.md](DOCKER.md) for complete Docker documentation.
 
 ### Download Pre-compiled Binary
 
-Linux x86_64:
-
+**Linux x86_64:**
 ```bash
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_amd64 -o dbbackup
-chmod +x dbbackup
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-linux-amd64
+chmod +x dbbackup-linux-amd64
+sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
 
-Linux ARM64:
-
+**Linux ARM64:**
 ```bash
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_linux_arm64 -o dbbackup
-chmod +x dbbackup
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-linux-arm64
+chmod +x dbbackup-linux-arm64
+sudo mv dbbackup-linux-arm64 /usr/local/bin/dbbackup
 ```
 
-macOS Intel:
-
+**macOS Intel:**
 ```bash
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_amd64 -o dbbackup
-chmod +x dbbackup
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-darwin-amd64
+chmod +x dbbackup-darwin-amd64
+sudo mv dbbackup-darwin-amd64 /usr/local/bin/dbbackup
 ```
 
-macOS Apple Silicon:
-
+**macOS Apple Silicon:**
 ```bash
-curl -L https://git.uuxo.net/uuxo/dbbackup/raw/branch/main/bin/dbbackup_darwin_arm64 -o dbbackup
-chmod +x dbbackup
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-darwin-arm64
+chmod +x dbbackup-darwin-arm64
+sudo mv dbbackup-darwin-arm64 /usr/local/bin/dbbackup
 ```
 
-Other platforms available in `bin/` directory: FreeBSD, OpenBSD, NetBSD.
+**Other platforms:** FreeBSD, OpenBSD, NetBSD binaries available in [releases](https://git.uuxo.net/PlusOne/dbbackup/releases).
 
 ### Build from Source
 
@@ -1433,6 +1438,31 @@ The test suite validates:
 
 dbbackup is production-ready for backup and disaster recovery operations on PostgreSQL, MySQL, and MariaDB databases. Successfully tested with 42GB databases containing 35,000 large objects.
 
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Ways to contribute:**
+- 🐛 Report bugs and issues
+- 💡 Suggest new features
+- 📝 Improve documentation
+- 🔧 Submit pull requests
+- ⭐ Star the project!
+
+## Support
+
+**Issues & Bug Reports:** https://git.uuxo.net/PlusOne/dbbackup/issues
+
+**Security Issues:** See [SECURITY.md](SECURITY.md) for responsible disclosure
+
+**Documentation:**
+- [README.md](README.md) - Main documentation
+- [PITR.md](PITR.md) - Point-in-Time Recovery guide
+- [DOCKER.md](DOCKER.md) - Docker usage
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+Copyright 2025 dbbackup Project

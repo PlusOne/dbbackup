@@ -106,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Better error messages for PITR operations
 
 ### Production
-- **Deployed at uuxoi.local**: 2 production hosts
+- **Production Validated**: 2 production hosts
 - **Databases backed up**: 8 databases nightly
 - **Retention policy**: 30-day retention with minimum 5 backups
 - **Backup volume**: ~10MB/night

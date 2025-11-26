@@ -95,7 +95,7 @@ Production-ready backup operations:
 ## ✅ Production Validated
 
 **Real-World Deployment:**
-- ✅ 2 production hosts at uuxoi.local
+- ✅ 2 production hosts in production environment
 - ✅ 8 databases backed up nightly
 - ✅ 30-day retention with minimum 5 backups
 - ✅ ~10MB/night backup volume
@@ -125,28 +125,28 @@ Production-ready backup operations:
 
 **Linux (x86_64):**
 ```bash
-wget https://git.uuxo.net/uuxo/dbbackup/releases/download/v3.1.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
 
 **Linux (ARM64):**
 ```bash
-wget https://git.uuxo.net/uuxo/dbbackup/releases/download/v3.1.0/dbbackup-linux-arm64
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-linux-arm64
 chmod +x dbbackup-linux-arm64
 sudo mv dbbackup-linux-arm64 /usr/local/bin/dbbackup
 ```
 
 **macOS (Intel):**
 ```bash
-wget https://git.uuxo.net/uuxo/dbbackup/releases/download/v3.1.0/dbbackup-darwin-amd64
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-darwin-amd64
 chmod +x dbbackup-darwin-amd64
 sudo mv dbbackup-darwin-amd64 /usr/local/bin/dbbackup
 ```
 
 **macOS (Apple Silicon):**
 ```bash
-wget https://git.uuxo.net/uuxo/dbbackup/releases/download/v3.1.0/dbbackup-darwin-arm64
+wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-darwin-arm64
 chmod +x dbbackup-darwin-arm64
 sudo mv dbbackup-darwin-arm64 /usr/local/bin/dbbackup
 ```
@@ -154,7 +154,7 @@ sudo mv dbbackup-darwin-arm64 /usr/local/bin/dbbackup
 ### Build from Source
 
 ```bash
-git clone https://git.uuxo.net/uuxo/dbbackup.git
+git clone https://git.uuxo.net/PlusOne/dbbackup.git
 cd dbbackup
 go build -o dbbackup
 sudo mv dbbackup /usr/local/bin/
@@ -163,8 +163,8 @@ sudo mv dbbackup /usr/local/bin/
 ### Docker
 
 ```bash
-docker pull git.uuxo.net/uuxo/dbbackup:v3.1.0
-docker pull git.uuxo.net/uuxo/dbbackup:latest
+docker pull git.uuxo.net/PlusOne/dbbackup:v3.1.0
+docker pull git.uuxo.net/PlusOne/dbbackup:latest
 ```
 
 ---
@@ -361,7 +361,7 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for detai
 - 5.75 hours intensive development (52% time savings)
 
 **Production Validation:**
-- Deployed at uuxoi.local by Ansible Claude
+- Deployed in production environments
 - Real-world testing and feedback
 - DevOps validation and feature requests
 
@@ -379,15 +379,15 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for detai
 None reported in production deployment.
 
 If you encounter issues, please report them at:
-https://git.uuxo.net/uuxo/dbbackup/issues
+https://git.uuxo.net/PlusOne/dbbackup/issues
 
 ---
 
 ## 📞 Support
 
 **Documentation:** See [README.md](README.md) and [PITR.md](PITR.md)  
-**Issues:** https://git.uuxo.net/uuxo/dbbackup/issues  
-**Repository:** https://git.uuxo.net/uuxo/dbbackup
+**Issues:** https://git.uuxo.net/PlusOne/dbbackup/issues  
+**Repository:** https://git.uuxo.net/PlusOne/dbbackup
 
 ---
 
