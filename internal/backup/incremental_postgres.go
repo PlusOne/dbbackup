@@ -4,14 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 )
 
 // PostgresIncrementalEngine implements incremental backups for PostgreSQL
@@ -39,7 +40,8 @@ func (e *PostgresIncrementalEngine) FindChangedFiles(ctx context.Context, config
 		return nil, fmt.Errorf("failed to load base backup info: %w", err)
 	}
 
-	if baseInfo.BackupType != BackupTypeFull {
+	// Validate base backup is full backup  
+	if baseInfo.BackupType != "" && baseInfo.BackupType != "full" {
 		return nil, fmt.Errorf("base backup must be a full backup, got: %s", baseInfo.BackupType)
 	}
 
@@ -128,22 +130,15 @@ func (e *PostgresIncrementalEngine) shouldSkipFile(path string, info os.FileInfo
 	return false
 }
 
-// loadBackupInfo loads backup metadata from .info file
-func (e *PostgresIncrementalEngine) loadBackupInfo(backupPath string) (*BackupInfo, error) {
-	// Remove .tar.gz extension and add .info
-	infoPath := strings.TrimSuffix(backupPath, ".tar.gz") + ".info"
-	
-	data, err := os.ReadFile(infoPath)
+// loadBackupInfo loads backup metadata from .meta.json file
+func (e *PostgresIncrementalEngine) loadBackupInfo(backupPath string) (*metadata.BackupMetadata, error) {
+	// Load using metadata package
+	meta, err := metadata.Load(backupPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read info file %s: %w", infoPath, err)
+		return nil, fmt.Errorf("failed to load backup metadata: %w", err)
 	}
 
-	var info BackupInfo
-	if err := json.Unmarshal(data, &info); err != nil {
-		return nil, fmt.Errorf("failed to parse info file: %w", err)
-	}
-
-	return &info, nil
+	return meta, nil
 }
 
 // CreateIncrementalBackup creates a new incremental backup archive
@@ -152,13 +147,84 @@ func (e *PostgresIncrementalEngine) CreateIncrementalBackup(ctx context.Context,
 		"changed_files", len(changedFiles),
 		"base_backup", config.BaseBackupPath)
 
-	// TODO: Implementation in next step
-	// 1. Create tar.gz with only changed files
-	// 2. Generate metadata with base backup reference
-	// 3. Write .info file with incremental metadata
-	// 4. Calculate checksums
+	if len(changedFiles) == 0 {
+		e.log.Info("No changed files detected - skipping incremental backup")
+		return fmt.Errorf("no changed files since base backup")
+	}
 
-	return fmt.Errorf("not implemented yet")
+	// Load base backup metadata
+	baseInfo, err := e.loadBackupInfo(config.BaseBackupPath)
+	if err != nil {
+		return fmt.Errorf("failed to load base backup info: %w", err)
+	}
+
+	// Generate output filename: dbname_incr_TIMESTAMP.tar.gz
+	timestamp := time.Now().Format("20060102_150405")
+	outputFile := filepath.Join(filepath.Dir(config.BaseBackupPath), 
+		fmt.Sprintf("%s_incr_%s.tar.gz", baseInfo.Database, timestamp))
+
+	e.log.Info("Creating incremental archive", "output", outputFile)
+
+	// Create tar.gz archive with changed files
+	if err := e.createTarGz(ctx, outputFile, changedFiles, config); err != nil {
+		return fmt.Errorf("failed to create archive: %w", err)
+	}
+
+	// Calculate checksum
+	checksum, err := e.CalculateFileChecksum(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to calculate checksum: %w", err)
+	}
+
+	// Get archive size
+	stat, err := os.Stat(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to stat archive: %w", err)
+	}
+
+	// Calculate total size of changed files
+	var totalSize int64
+	for _, f := range changedFiles {
+		totalSize += f.Size
+	}
+
+	// Create incremental metadata
+	metadata := &metadata.BackupMetadata{
+		Version:         "2.2.0",
+		Timestamp:       time.Now(),
+		Database:        baseInfo.Database,
+		DatabaseType:    baseInfo.DatabaseType,
+		Host:            baseInfo.Host,
+		Port:            baseInfo.Port,
+		User:            baseInfo.User,
+		BackupFile:      outputFile,
+		SizeBytes:       stat.Size(),
+		SHA256:          checksum,
+		Compression:     "gzip",
+		BackupType:      "incremental",
+		BaseBackup:      filepath.Base(config.BaseBackupPath),
+		Incremental: &metadata.IncrementalMetadata{
+			BaseBackupID:        baseInfo.SHA256,
+			BaseBackupPath:      filepath.Base(config.BaseBackupPath),
+			BaseBackupTimestamp: baseInfo.Timestamp,
+			IncrementalFiles:    len(changedFiles),
+			TotalSize:           totalSize,
+			BackupChain:         buildBackupChain(baseInfo, filepath.Base(outputFile)),
+		},
+	}
+
+	// Save metadata
+	if err := metadata.Save(); err != nil {
+		return fmt.Errorf("failed to save metadata: %w", err)
+	}
+
+	e.log.Info("Incremental backup created successfully",
+		"output", outputFile,
+		"size", stat.Size(),
+		"changed_files", len(changedFiles),
+		"checksum", checksum[:16]+"...")
+
+	return nil
 }
 
 // RestoreIncremental restores an incremental backup on top of a base
@@ -191,4 +257,22 @@ func (e *PostgresIncrementalEngine) CalculateFileChecksum(path string) (string, 
 	}
 
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// buildBackupChain constructs the backup chain from base backup to current incremental
+func buildBackupChain(baseInfo *metadata.BackupMetadata, currentBackup string) []string {
+	chain := []string{}
+	
+	// If base backup has a chain (is itself incremental), use that
+	if baseInfo.Incremental != nil && len(baseInfo.Incremental.BackupChain) > 0 {
+		chain = append(chain, baseInfo.Incremental.BackupChain...)
+	} else {
+		// Base is a full backup, start chain with it
+		chain = append(chain, filepath.Base(baseInfo.BackupFile))
+	}
+	
+	// Add current incremental to chain
+	chain = append(chain, currentBackup)
+	
+	return chain
 }
