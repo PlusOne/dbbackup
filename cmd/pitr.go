@@ -162,6 +162,27 @@ Example:
 	RunE: runWALCleanup,
 }
 
+// walTimelineCmd shows timeline history
+var walTimelineCmd = &cobra.Command{
+	Use:   "timeline",
+	Short: "Show timeline branching history",
+	Long: `Display PostgreSQL timeline history and branching structure.
+
+Timelines track recovery points and allow parallel recovery paths.
+A new timeline is created each time you perform point-in-time recovery.
+
+Shows:
+- Timeline hierarchy and parent relationships
+- Timeline switch points (LSN)
+- WAL segment ranges per timeline
+- Reason for timeline creation
+
+Example:
+  dbbackup wal timeline --archive-dir /backups/wal_archive
+`,
+	RunE: runWALTimeline,
+}
+
 func init() {
 	rootCmd.AddCommand(pitrCmd)
 	rootCmd.AddCommand(walCmd)
@@ -175,6 +196,7 @@ func init() {
 	walCmd.AddCommand(walArchiveCmd)
 	walCmd.AddCommand(walListCmd)
 	walCmd.AddCommand(walCleanupCmd)
+	walCmd.AddCommand(walTimelineCmd)
 
 	// PITR enable flags
 	pitrEnableCmd.Flags().StringVar(&pitrArchiveDir, "archive-dir", "/var/backups/wal_archive", "Directory to store WAL archives")
@@ -194,6 +216,9 @@ func init() {
 	// WAL cleanup flags
 	walCleanupCmd.Flags().StringVar(&walArchiveDir, "archive-dir", "/var/backups/wal_archive", "WAL archive directory")
 	walCleanupCmd.Flags().IntVar(&walRetentionDays, "retention-days", 7, "Days to keep WAL archives")
+
+	// WAL timeline flags
+	walTimelineCmd.Flags().StringVar(&walArchiveDir, "archive-dir", "/var/backups/wal_archive", "WAL archive directory")
 }
 
 // Command implementations
@@ -421,6 +446,56 @@ func runWALCleanup(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info("✅ WAL cleanup completed", "deleted", deleted, "retention_days", archiveConfig.RetentionDays)
+	return nil
+}
+
+func runWALTimeline(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	// Create timeline manager
+	tm := wal.NewTimelineManager(log)
+
+	// Parse timeline history
+	history, err := tm.ParseTimelineHistory(ctx, walArchiveDir)
+	if err != nil {
+		return fmt.Errorf("failed to parse timeline history: %w", err)
+	}
+
+	// Validate consistency
+	if err := tm.ValidateTimelineConsistency(ctx, history); err != nil {
+		log.Warn("Timeline consistency issues detected", "error", err)
+	}
+
+	// Display timeline tree
+	fmt.Println(tm.FormatTimelineTree(history))
+
+	// Display timeline details
+	if len(history.Timelines) > 0 {
+		fmt.Println("\nTimeline Details:")
+		fmt.Println("═════════════════")
+		for _, tl := range history.Timelines {
+			fmt.Printf("\nTimeline %d:\n", tl.TimelineID)
+			if tl.ParentTimeline > 0 {
+				fmt.Printf("  Parent:      Timeline %d\n", tl.ParentTimeline)
+				fmt.Printf("  Switch LSN:  %s\n", tl.SwitchPoint)
+			}
+			if tl.Reason != "" {
+				fmt.Printf("  Reason:      %s\n", tl.Reason)
+			}
+			if tl.FirstWALSegment > 0 {
+				fmt.Printf("  WAL Range:   0x%016X - 0x%016X\n", tl.FirstWALSegment, tl.LastWALSegment)
+				segmentCount := tl.LastWALSegment - tl.FirstWALSegment + 1
+				fmt.Printf("  Segments:    %d files (~%d MB)\n", segmentCount, segmentCount*16)
+			}
+			if !tl.CreatedAt.IsZero() {
+				fmt.Printf("  Created:     %s\n", tl.CreatedAt.Format("2006-01-02 15:04:05"))
+			}
+			if tl.TimelineID == history.CurrentTimeline {
+				fmt.Printf("  Status:      ⚡ CURRENT\n")
+			}
+		}
+	}
+
 	return nil
 }
 
