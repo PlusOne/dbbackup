@@ -100,6 +100,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Licensing**: Added Apache License 2.0 to the project (LICENSE file)
+- **Version**: Updated to v3.1.0
+- Enhanced metadata format with PITR information
+- Improved progress reporting for long-running operations
+- Better error messages for PITR operations
+
+### Production
+- **Deployed at uuxoi.local**: 2 production hosts
+- **Databases backed up**: 8 databases nightly
+- **Retention policy**: 30-day retention with minimum 5 backups
+- **Backup volume**: ~10MB/night
+- **Schedule**: 02:09 and 02:25 CET
+- **Impact**: Resolved 4-day backup failure immediately
+- **User feedback**: "cleanup command is SO gut" | "--dry-run: chef's kiss!" 💋
+
+### Documentation
+- Added comprehensive PITR.md guide (complete PITR documentation)
+- Updated README.md with PITR section (200+ lines)
+- Added RELEASE_NOTES_v3.1.md (full feature list)
+- Updated CHANGELOG.md with v3.1.0 details
+- Added NOTICE file for Apache License attribution
+- Created comprehensive test suite (tests/pitr_complete_test.go - 700+ lines)
 
 ## [3.0.0] - 2025-11-26
 
