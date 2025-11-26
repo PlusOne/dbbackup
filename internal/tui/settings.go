@@ -264,6 +264,120 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Type:        "bool",
 			Description: "Automatically detect and optimize for CPU cores",
 		},
+		{
+			Key:         "cloud_enabled",
+			DisplayName: "Cloud Storage Enabled",
+			Value: func(c *config.Config) string {
+				if c.CloudEnabled {
+					return "true"
+				}
+				return "false"
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.CloudEnabled = val
+				return nil
+			},
+			Type:        "bool",
+			Description: "Enable cloud storage integration (S3, Azure, GCS)",
+		},
+		{
+			Key:         "cloud_provider",
+			DisplayName: "Cloud Provider",
+			Value:       func(c *config.Config) string { return c.CloudProvider },
+			Update: func(c *config.Config, v string) error {
+				providers := []string{"s3", "minio", "b2", "azure", "gcs"}
+				currentIdx := -1
+				for i, p := range providers {
+					if c.CloudProvider == p {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(providers)
+				c.CloudProvider = providers[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "Cloud storage provider (press Enter to cycle: S3 → MinIO → B2 → Azure → GCS)",
+		},
+		{
+			Key:         "cloud_bucket",
+			DisplayName: "Cloud Bucket/Container",
+			Value:       func(c *config.Config) string { return c.CloudBucket },
+			Update: func(c *config.Config, v string) error {
+				c.CloudBucket = v
+				return nil
+			},
+			Type:        "string",
+			Description: "Bucket name (S3/GCS) or container name (Azure)",
+		},
+		{
+			Key:         "cloud_region",
+			DisplayName: "Cloud Region",
+			Value:       func(c *config.Config) string { return c.CloudRegion },
+			Update: func(c *config.Config, v string) error {
+				c.CloudRegion = v
+				return nil
+			},
+			Type:        "string",
+			Description: "Region (e.g., us-east-1 for S3, us-central1 for GCS)",
+		},
+		{
+			Key:         "cloud_access_key",
+			DisplayName: "Cloud Access Key",
+			Value:       func(c *config.Config) string {
+				if c.CloudAccessKey != "" {
+					return "***" + c.CloudAccessKey[len(c.CloudAccessKey)-4:]
+				}
+				return ""
+			},
+			Update: func(c *config.Config, v string) error {
+				c.CloudAccessKey = v
+				return nil
+			},
+			Type:        "string",
+			Description: "Access key (S3/MinIO), Account name (Azure), or Service account path (GCS)",
+		},
+		{
+			Key:         "cloud_secret_key",
+			DisplayName: "Cloud Secret Key",
+			Value: func(c *config.Config) string {
+				if c.CloudSecretKey != "" {
+					return "********"
+				}
+				return ""
+			},
+			Update: func(c *config.Config, v string) error {
+				c.CloudSecretKey = v
+				return nil
+			},
+			Type:        "string",
+			Description: "Secret key (S3/MinIO/B2) or Account key (Azure)",
+		},
+		{
+			Key:         "cloud_auto_upload",
+			DisplayName: "Cloud Auto-Upload",
+			Value: func(c *config.Config) string {
+				if c.CloudAutoUpload {
+					return "true"
+				}
+				return "false"
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.CloudAutoUpload = val
+				return nil
+			},
+			Type:        "bool",
+			Description: "Automatically upload backups to cloud after creation",
+		},
 	}
 
 	return SettingsModel{
@@ -350,9 +464,17 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter", " ":
-			// For database_type, cycle through options instead of typing
-			if m.cursor >= 0 && m.cursor < len(m.settings) && m.settings[m.cursor].Key == "database_type" {
-				return m.cycleDatabaseType()
+			// For selector types, cycle through options instead of typing
+			if m.cursor >= 0 && m.cursor < len(m.settings) {
+				currentSetting := m.settings[m.cursor]
+				if currentSetting.Type == "selector" {
+					if err := currentSetting.Update(m.config, ""); err != nil {
+						m.message = errorStyle.Render(fmt.Sprintf("❌ %s", err.Error()))
+					} else {
+						m.message = successStyle.Render(fmt.Sprintf("✅ Updated %s", currentSetting.DisplayName))
+					}
+					return m, nil
+				}
 			}
 			return m.startEditing()
 
@@ -603,6 +725,14 @@ func (m SettingsModel) View() string {
 			fmt.Sprintf("Backup Dir: %s", m.config.BackupDir),
 			fmt.Sprintf("Compression: Level %d", m.config.CompressionLevel),
 			fmt.Sprintf("Jobs: %d parallel, %d dump", m.config.Jobs, m.config.DumpJobs),
+		}
+		
+		if m.config.CloudEnabled {
+			cloudInfo := fmt.Sprintf("Cloud: %s (%s)", m.config.CloudProvider, m.config.CloudBucket)
+			if m.config.CloudAutoUpload {
+				cloudInfo += " [auto-upload]"
+			}
+			summary = append(summary, cloudInfo)
 		}
 
 		for _, line := range summary {
