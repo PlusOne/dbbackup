@@ -8,3 +8,27 @@ logs/
 *.out
 *.trace
 *.err
+
+# Ignore built binaries in root (keep bin/ directory for releases)
+/dbbackup
+/dbbackup_*
+!dbbackup.png
+
+# Ignore development artifacts
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.iml
+
+# Ignore test coverage
+*.cover
+coverage.html
+
+# Ignore temporary files
+tmp/
+temp/
