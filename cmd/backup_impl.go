@@ -136,8 +136,8 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	
 	// Validate incremental backup requirements
 	if backupType == "incremental" {
-		if !cfg.IsPostgreSQL() {
-			return fmt.Errorf("incremental backups are currently only supported for PostgreSQL")
+		if !cfg.IsPostgreSQL() && !cfg.IsMySQL() {
+			return fmt.Errorf("incremental backups are only supported for PostgreSQL and MySQL/MariaDB")
 		}
 		if baseBackup == "" {
 			return fmt.Errorf("--base-backup is required for incremental backups")
@@ -216,10 +216,40 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Perform backup based on type
 	var backupErr error
 	if backupType == "incremental" {
-		// Incremental backup - NOT IMPLEMENTED YET
-		log.Warn("Incremental backup is not fully implemented yet - creating full backup instead")
-		log.Warn("Full incremental support coming in v2.2.1")
-		backupErr = engine.BackupSingle(ctx, databaseName)
+		// Incremental backup - supported for PostgreSQL and MySQL
+		log.Info("Creating incremental backup", "base_backup", baseBackup)
+		
+		// Create appropriate incremental engine based on database type
+		var incrEngine interface {
+			FindChangedFiles(context.Context, *backup.IncrementalBackupConfig) ([]backup.ChangedFile, error)
+			CreateIncrementalBackup(context.Context, *backup.IncrementalBackupConfig, []backup.ChangedFile) error
+		}
+		
+		if cfg.IsPostgreSQL() {
+			incrEngine = backup.NewPostgresIncrementalEngine(log)
+		} else {
+			incrEngine = backup.NewMySQLIncrementalEngine(log)
+		}
+		
+		// Configure incremental backup
+		incrConfig := &backup.IncrementalBackupConfig{
+			BaseBackupPath:   baseBackup,
+			DataDirectory:    cfg.BackupDir, // Note: This should be the actual data directory
+			CompressionLevel: cfg.CompressionLevel,
+		}
+		
+		// Find changed files
+		changedFiles, err := incrEngine.FindChangedFiles(ctx, incrConfig)
+		if err != nil {
+			return fmt.Errorf("failed to find changed files: %w", err)
+		}
+		
+		// Create incremental backup
+		if err := incrEngine.CreateIncrementalBackup(ctx, incrConfig, changedFiles); err != nil {
+			return fmt.Errorf("failed to create incremental backup: %w", err)
+		}
+		
+		log.Info("Incremental backup completed", "changed_files", len(changedFiles))
 	} else {
 		// Full backup
 		backupErr = engine.BackupSingle(ctx, databaseName)
