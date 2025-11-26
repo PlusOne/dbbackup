@@ -15,9 +15,14 @@ var (
 	pitrForce      bool
 
 	// WAL archive flags
-	walArchiveDir string
-	walCompress   bool
-	walEncrypt    bool
+	walArchiveDir        string
+	walCompress          bool
+	walEncrypt           bool
+	walEncryptionKeyFile string
+	walEncryptionKeyEnv  string = "DBBACKUP_ENCRYPTION_KEY"
+
+	// WAL cleanup flags
+	walRetentionDays int
 
 	// PITR restore flags
 	pitrTargetTime      string
@@ -179,6 +184,8 @@ func init() {
 	walArchiveCmd.Flags().StringVar(&walArchiveDir, "archive-dir", "", "WAL archive directory (required)")
 	walArchiveCmd.Flags().BoolVar(&walCompress, "compress", false, "Compress WAL files with gzip")
 	walArchiveCmd.Flags().BoolVar(&walEncrypt, "encrypt", false, "Encrypt WAL files")
+	walArchiveCmd.Flags().StringVar(&walEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (32 bytes)")
+	walArchiveCmd.Flags().StringVar(&walEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
 	walArchiveCmd.MarkFlagRequired("archive-dir")
 
 	// WAL list flags
@@ -186,7 +193,7 @@ func init() {
 
 	// WAL cleanup flags
 	walCleanupCmd.Flags().StringVar(&walArchiveDir, "archive-dir", "/var/backups/wal_archive", "WAL archive directory")
-	walCleanupCmd.Flags().IntVar(&cfg.RetentionDays, "retention-days", 7, "Days to keep WAL archives")
+	walCleanupCmd.Flags().IntVar(&walRetentionDays, "retention-days", 7, "Days to keep WAL archives")
 }
 
 // Command implementations
@@ -292,11 +299,22 @@ func runWALArchive(cmd *cobra.Command, args []string) error {
 	walPath := args[0]
 	walFilename := args[1]
 
+	// Load encryption key if encryption is enabled
+	var encryptionKey []byte
+	if walEncrypt {
+		key, err := loadEncryptionKey(walEncryptionKeyFile, walEncryptionKeyEnv)
+		if err != nil {
+			return fmt.Errorf("failed to load WAL encryption key: %w", err)
+		}
+		encryptionKey = key
+	}
+
 	archiver := wal.NewArchiver(cfg, log)
 	archiveConfig := wal.ArchiveConfig{
-		ArchiveDir:  walArchiveDir,
-		CompressWAL: walCompress,
-		EncryptWAL:  walEncrypt,
+		ArchiveDir:    walArchiveDir,
+		CompressWAL:   walCompress,
+		EncryptWAL:    walEncrypt,
+		EncryptionKey: encryptionKey,
 	}
 
 	info, err := archiver.ArchiveWALFile(ctx, walPath, walFilename, archiveConfig)
@@ -390,7 +408,7 @@ func runWALCleanup(cmd *cobra.Command, args []string) error {
 	archiver := wal.NewArchiver(cfg, log)
 	archiveConfig := wal.ArchiveConfig{
 		ArchiveDir:    walArchiveDir,
-		RetentionDays: cfg.RetentionDays,
+		RetentionDays: walRetentionDays,
 	}
 
 	if archiveConfig.RetentionDays <= 0 {

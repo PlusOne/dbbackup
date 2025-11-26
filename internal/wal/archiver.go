@@ -24,6 +24,7 @@ type ArchiveConfig struct {
 	ArchiveDir      string // Directory to store archived WAL files
 	CompressWAL     bool   // Compress WAL files with gzip
 	EncryptWAL      bool   // Encrypt WAL files
+	EncryptionKey   []byte // 32-byte key for AES-256-GCM encryption
 	RetentionDays   int    // Days to keep WAL archives
 	VerifyChecksum  bool   // Verify WAL file checksums
 }
@@ -73,57 +74,33 @@ func (a *Archiver) ArchiveWALFile(ctx context.Context, walFilePath, walFileName 
 		timeline, segment = 0, 0 // Use defaults for non-standard names
 	}
 
-	// Determine target archive path
-	archivePath := filepath.Join(config.ArchiveDir, walFileName)
-	if config.CompressWAL {
-		archivePath += ".gz"
-	}
-	if config.EncryptWAL {
-		archivePath += ".enc"
-	}
-
-	// Copy WAL file to archive
-	srcFile, err := os.Open(walFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open WAL file %s: %w", walFilePath, err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create archive file %s: %w", archivePath, err)
-	}
-	defer dstFile.Close()
-
-	// TODO: Add compression support (gzip)
-	// TODO: Add encryption support (AES-256-GCM)
+	// Process WAL file: compression and/or encryption
+	var archivePath string
+	var archivedSize int64
 	
-	// For now, simple copy
-	written, err := io.Copy(dstFile, srcFile)
+	if config.CompressWAL && config.EncryptWAL {
+		// Compress then encrypt
+		archivePath, archivedSize, err = a.compressAndEncryptWAL(walFilePath, walFileName, config)
+	} else if config.CompressWAL {
+		// Compress only
+		archivePath, archivedSize, err = a.compressWAL(walFilePath, walFileName, config)
+	} else if config.EncryptWAL {
+		// Encrypt only
+		archivePath, archivedSize, err = a.encryptWAL(walFilePath, walFileName, config)
+	} else {
+		// Plain copy
+		archivePath, archivedSize, err = a.copyWAL(walFilePath, walFileName, config)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to copy WAL file to archive: %w", err)
-	}
-
-	if written != stat.Size() {
-		return nil, fmt.Errorf("incomplete WAL copy: wrote %d bytes, expected %d", written, stat.Size())
-	}
-
-	// Sync to disk to ensure durability
-	if err := dstFile.Sync(); err != nil {
-		return nil, fmt.Errorf("failed to sync WAL archive to disk: %w", err)
-	}
-
-	// Verify archive was created successfully
-	archiveStat, err := os.Stat(archivePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify archived WAL file: %w", err)
+		return nil, err
 	}
 
 	info := &WALArchiveInfo{
 		WALFileName:  walFileName,
 		ArchivePath:  archivePath,
 		OriginalSize: stat.Size(),
-		ArchivedSize: archiveStat.Size(),
+		ArchivedSize: archivedSize,
 		Timeline:     timeline,
 		Segment:      segment,
 		ArchivedAt:   time.Now(),
@@ -134,11 +111,101 @@ func (a *Archiver) ArchiveWALFile(ctx context.Context, walFilePath, walFileName 
 	a.log.Info("WAL file archived successfully",
 		"wal", walFileName,
 		"archive", archivePath,
-		"size", stat.Size(),
+		"original_size", stat.Size(),
+		"archived_size", archivedSize,
 		"timeline", timeline,
 		"segment", segment)
 
 	return info, nil
+}
+
+// copyWAL performs a simple file copy
+func (a *Archiver) copyWAL(walFilePath, walFileName string, config ArchiveConfig) (string, int64, error) {
+	archivePath := filepath.Join(config.ArchiveDir, walFileName)
+
+	srcFile, err := os.Open(walFilePath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to open WAL file: %w", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create archive file: %w", err)
+	}
+	defer dstFile.Close()
+
+	written, err := io.Copy(dstFile, srcFile)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to copy WAL file: %w", err)
+	}
+
+	if err := dstFile.Sync(); err != nil {
+		return "", 0, fmt.Errorf("failed to sync WAL archive: %w", err)
+	}
+
+	return archivePath, written, nil
+}
+
+// compressWAL compresses a WAL file using gzip
+func (a *Archiver) compressWAL(walFilePath, walFileName string, config ArchiveConfig) (string, int64, error) {
+	archivePath := filepath.Join(config.ArchiveDir, walFileName+".gz")
+	
+	compressor := NewCompressor(a.log)
+	compressedSize, err := compressor.CompressWALFile(walFilePath, archivePath, 6) // gzip level 6 (balanced)
+	if err != nil {
+		return "", 0, fmt.Errorf("WAL compression failed: %w", err)
+	}
+
+	return archivePath, compressedSize, nil
+}
+
+// encryptWAL encrypts a WAL file
+func (a *Archiver) encryptWAL(walFilePath, walFileName string, config ArchiveConfig) (string, int64, error) {
+	archivePath := filepath.Join(config.ArchiveDir, walFileName+".enc")
+	
+	encryptor := NewEncryptor(a.log)
+	encOpts := EncryptionOptions{
+		Key: config.EncryptionKey,
+	}
+	
+	encryptedSize, err := encryptor.EncryptWALFile(walFilePath, archivePath, encOpts)
+	if err != nil {
+		return "", 0, fmt.Errorf("WAL encryption failed: %w", err)
+	}
+
+	return archivePath, encryptedSize, nil
+}
+
+// compressAndEncryptWAL compresses then encrypts a WAL file
+func (a *Archiver) compressAndEncryptWAL(walFilePath, walFileName string, config ArchiveConfig) (string, int64, error) {
+	// Step 1: Compress to temp file
+	tempDir := filepath.Join(config.ArchiveDir, ".tmp")
+	if err := os.MkdirAll(tempDir, 0700); err != nil {
+		return "", 0, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir) // Clean up temp dir
+
+	tempCompressed := filepath.Join(tempDir, walFileName+".gz")
+	compressor := NewCompressor(a.log)
+	_, err := compressor.CompressWALFile(walFilePath, tempCompressed, 6)
+	if err != nil {
+		return "", 0, fmt.Errorf("WAL compression failed: %w", err)
+	}
+
+	// Step 2: Encrypt compressed file
+	archivePath := filepath.Join(config.ArchiveDir, walFileName+".gz.enc")
+	encryptor := NewEncryptor(a.log)
+	encOpts := EncryptionOptions{
+		Key: config.EncryptionKey,
+	}
+	
+	encryptedSize, err := encryptor.EncryptWALFile(tempCompressed, archivePath, encOpts)
+	if err != nil {
+		return "", 0, fmt.Errorf("WAL encryption failed: %w", err)
+	}
+
+	return archivePath, encryptedSize, nil
 }
 
 // ParseWALFileName extracts timeline and segment number from WAL filename
