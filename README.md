@@ -137,15 +137,35 @@ Database: root@localhost:5432 (PostgreSQL)
 Press ↑/↓ to navigate • Enter to select • q to quit
 ```
 
-**Backup Progress:**
+**Backup Execution:**
 ```
-Backing up database: production_db
+🔄 Backup Execution
 
-[=================>              ] 45%
-Elapsed: 2m 15s  |  ETA: 2m 48s
+  Type:      Single Database
+  Database:  production_db
+  Duration:  2m 35s
 
-Current: Dumping table users (1.2M records)
-Speed: 25 MB/s  |  Size: 3.2 GB / 7.1 GB
+  ⠹ Backing up database 'production_db'...
+
+⌨️  Press Ctrl+C to cancel
+```
+
+**Backup Completed:**
+```
+🔄 Backup Execution
+
+  Type:      Cluster Backup
+  Duration:  8m 12s
+
+  ✅ Backup completed successfully!
+
+  Backup created: cluster_20251128_092928.tar.gz
+  Size: 22.5 GB (compressed)
+  Location: /u01/dba/dumps/
+  Databases: 7
+  Checksum: SHA-256 verified
+
+  ⌨️  Press Enter or ESC to return to menu
 ```
 
 **Restore Preview:**
