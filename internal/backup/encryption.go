@@ -69,9 +69,21 @@ func EncryptBackupFile(backupPath string, key []byte, log logger.Logger) error {
 
 // IsBackupEncrypted checks if a backup file is encrypted
 func IsBackupEncrypted(backupPath string) bool {
-	// Check metadata first
-	metaPath := backupPath + ".meta.json"
-	if meta, err := metadata.Load(metaPath); err == nil {
+	// Check metadata first - try cluster metadata (for cluster backups)
+	// Try cluster metadata first
+	if clusterMeta, err := metadata.LoadCluster(backupPath); err == nil {
+		// For cluster backups, check if ANY database is encrypted
+		for _, db := range clusterMeta.Databases {
+			if db.Encrypted {
+				return true
+			}
+		}
+		// All databases are unencrypted
+		return false
+	}
+	
+	// Try single database metadata
+	if meta, err := metadata.Load(backupPath); err == nil {
 		return meta.Encrypted
 	}
 	
