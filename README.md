@@ -201,6 +201,15 @@ Restore full cluster:
 ./dbbackup restore cluster cluster_backup.tar.gz --confirm
 ```
 
+**For VMs with limited system disk space** (common with NFS-mounted backup storage):
+
+```bash
+# Use NFS mount or larger partition for extraction
+./dbbackup restore cluster cluster_backup.tar.gz --workdir /u01/dba/restore_tmp --confirm
+```
+
+This prevents "insufficient disk space" errors when the backup directory has space but the system root partition is small.
+
 ## Commands
 
 ### Global Flags (Available for all commands)
@@ -1257,7 +1266,7 @@ Enable detailed logging:
 
 - **"Ident authentication failed"** - Run as matching OS user or configure password authentication
 - **"Permission denied"** - Check database user privileges
-- **"Disk space check failed"** - Ensure 4x archive size available
+- **"Disk space check failed"** - Ensure 4x archive size available. For VMs with small system disks, use `--workdir /path/to/larger/partition` to extract on NFS mount or larger disk
 - **"Archive validation failed"** - Backup file corrupted or incomplete
 
 ## Building

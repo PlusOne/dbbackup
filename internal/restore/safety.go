@@ -230,6 +230,11 @@ func containsSQLKeywords(content string) bool {
 
 // CheckDiskSpace verifies sufficient disk space for restore
 func (s *Safety) CheckDiskSpace(archivePath string, multiplier float64) error {
+	return s.CheckDiskSpaceAt(archivePath, s.cfg.BackupDir, multiplier)
+}
+
+// CheckDiskSpaceAt verifies sufficient disk space at a specific directory
+func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplier float64) error {
 	// Get archive size
 	stat, err := os.Stat(archivePath)
 	if err != nil {
@@ -242,18 +247,33 @@ func (s *Safety) CheckDiskSpace(archivePath string, multiplier float64) error {
 	requiredSpace := int64(float64(archiveSize) * multiplier)
 
 	// Get available disk space
-	availableSpace, err := getDiskSpace(s.cfg.BackupDir)
+	availableSpace, err := getDiskSpace(checkDir)
 	if err != nil {
 		s.log.Warn("Cannot check disk space", "error", err)
 		return nil // Don't fail if we can't check
 	}
 
+	usagePercent := float64(availableSpace-requiredSpace) / float64(availableSpace) * 100
+	if usagePercent < 0 {
+		usagePercent = 100 + usagePercent // Show how much over we are
+	}
+
 	if availableSpace < requiredSpace {
-		return fmt.Errorf("insufficient disk space: need %s, have %s",
-			FormatBytes(requiredSpace), FormatBytes(availableSpace))
+		return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size\\n"+
+			"  Required: %s\\n"+
+			"  Available: %s\\n"+
+			"  Archive: %s\\n"+
+			"  Check location: %s\\n\\n"+
+			"Tip: Use --workdir to specify extraction directory with more space (e.g., --workdir /u01/dba/restore_tmp)",
+			usagePercent,
+			FormatBytes(requiredSpace),
+			FormatBytes(availableSpace),
+			FormatBytes(archiveSize),
+			checkDir)
 	}
 
 	s.log.Info("Disk space check passed",
+		"location", checkDir,
 		"required", FormatBytes(requiredSpace),
 		"available", FormatBytes(availableSpace))
 

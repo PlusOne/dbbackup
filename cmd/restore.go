@@ -30,6 +30,7 @@ var (
 	restoreTarget    string
 	restoreVerbose   bool
 	restoreNoProgress bool
+	restoreWorkdir   string
 	
 	// Encryption flags
 	restoreEncryptionKeyFile string
@@ -133,8 +134,11 @@ Examples:
   # Restore full cluster
   dbbackup restore cluster cluster_backup_20240101_120000.tar.gz --confirm
 
-  # Use parallel decompression
-  dbbackup restore cluster cluster_backup.tar.gz --jobs 4 --confirm
+	# Use parallel decompression
+	dbbackup restore cluster cluster_backup.tar.gz --jobs 4 --confirm
+
+	# Use alternative working directory (for VMs with small system disk)
+	dbbackup restore cluster cluster_backup.tar.gz --workdir /u01/dba/restore_tmp --confirm
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestoreCluster,
@@ -229,6 +233,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would be done without executing")
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto)")
+	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /u01/dba/restore_tmp)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
@@ -476,9 +481,35 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("archive validation failed: %w", err)
 		}
 
+		// Determine where to check disk space
+		checkDir := cfg.BackupDir
+		if restoreWorkdir != "" {
+			checkDir = restoreWorkdir
+			
+			// Verify workdir exists or create it
+			if _, err := os.Stat(restoreWorkdir); os.IsNotExist(err) {
+				log.Warn("Working directory does not exist, will be created", "path", restoreWorkdir)
+				if err := os.MkdirAll(restoreWorkdir, 0755); err != nil {
+					return fmt.Errorf("cannot create working directory: %w", err)
+				}
+			}
+			
+			log.Warn("⚠️  Using alternative working directory for extraction")
+			log.Warn("    This is recommended when system disk space is limited")
+			log.Warn("    Location: " + restoreWorkdir)
+			
+			// Interactive confirmation required
+			if !restoreConfirm {
+				fmt.Printf("\n⚠️  Alternative extraction directory: %s\n", restoreWorkdir)
+				fmt.Printf("   This location will be used for temporary extraction.\n")
+				fmt.Printf("   Add --confirm flag to proceed.\n\n")
+				return fmt.Errorf("confirmation required for --workdir usage")
+			}
+		}
+
 		log.Info("Checking disk space...")
 		multiplier := 4.0 // Cluster needs more space for extraction
-		if err := safety.CheckDiskSpace(archivePath, multiplier); err != nil {
+		if err := safety.CheckDiskSpaceAt(archivePath, checkDir, multiplier); err != nil {
 			return fmt.Errorf("disk space check failed: %w", err)
 		}
 
@@ -496,6 +527,9 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\nWould restore cluster:\n")
 		fmt.Printf("  Archive: %s\n", archivePath)
 		fmt.Printf("  Parallel Jobs: %d (0 = auto)\n", restoreJobs)
+		if restoreWorkdir != "" {
+			fmt.Printf("  Working Directory: %s (alternative extraction location)\n", restoreWorkdir)
+		}
 		fmt.Println("\nTo execute this restore, add --confirm flag")
 		return nil
 	}
