@@ -148,6 +148,53 @@ Current: Dumping table users (1.2M records)
 Speed: 25 MB/s  |  Size: 3.2 GB / 7.1 GB
 ```
 
+**Restore Preview:**
+```
+🔍 Cluster Restore Preview
+
+📦 Archive Information
+  File: cluster_20251128_092928.tar.gz
+  Format: PostgreSQL Cluster (tar.gz)
+  Size: 22.5 GB
+  Created: 2025-11-28 09:29:28
+
+🎯 Cluster Restore Options
+  Host: localhost:5432
+  Existing Databases: 7 found
+    - test00
+    - teststablekc
+    - keycloak
+    - stabledc
+    - postgres
+    ... and 2 more
+  Clean All First: ✓ true (press 'c' to toggle)
+
+🛡️  Safety Checks
+  ✓ Archive integrity ... passed
+  ✓ Disk space ... 140 GB available
+  ✓ Required tools ... pg_restore, psql found
+  ✓ Target database ... accessible
+
+🔥 WARNING: Cluster cleanup enabled
+   7 existing database(s) will be DROPPED before restore!
+   This ensures a clean disaster recovery scenario
+
+✅ Ready to restore
+⌨️  c: Toggle cleanup | Enter: Proceed | Esc: Cancel
+```
+
+**Restore Progress:**
+```
+🔄 Restoring Cluster
+
+Phase: Restoring databases
+Status: ⠹ Restoring database: test00 (22 GB)
+
+Elapsed: 3m 42s
+
+⌨️  Press Ctrl+C to cancel
+```
+
 **Configuration Settings:**
 ```
 ⚙️  Configuration Settings
