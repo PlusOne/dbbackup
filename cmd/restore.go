@@ -138,7 +138,7 @@ Examples:
 	dbbackup restore cluster cluster_backup.tar.gz --jobs 4 --confirm
 
 	# Use alternative working directory (for VMs with small system disk)
-	dbbackup restore cluster cluster_backup.tar.gz --workdir /u01/dba/restore_tmp --confirm
+	dbbackup restore cluster cluster_backup.tar.gz --workdir /mnt/storage/restore_tmp --confirm
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestoreCluster,
@@ -233,7 +233,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would be done without executing")
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto)")
-	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /u01/dba/restore_tmp)")
+	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")

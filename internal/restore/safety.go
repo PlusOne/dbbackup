@@ -264,7 +264,7 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 			"  Available: %s\\n"+
 			"  Archive: %s\\n"+
 			"  Check location: %s\\n\\n"+
-			"Tip: Use --workdir to specify extraction directory with more space (e.g., --workdir /u01/dba/restore_tmp)",
+			"Tip: Use --workdir to specify extraction directory with more space (e.g., --workdir /mnt/storage/restore_tmp)",
 			usagePercent,
 			FormatBytes(requiredSpace),
 			FormatBytes(availableSpace),

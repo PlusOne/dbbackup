@@ -332,7 +332,7 @@ Restore full cluster:
 
 ```bash
 # Use NFS mount or larger partition for extraction
-./dbbackup restore cluster cluster_backup.tar.gz --workdir /u01/dba/restore_tmp --confirm
+./dbbackup restore cluster cluster_backup.tar.gz --workdir /mnt/storage/restore_tmp --confirm
 ```
 
 This prevents "insufficient disk space" errors when the backup directory has space but the system root partition is small.
@@ -648,7 +648,7 @@ If your system disk (where PostgreSQL data resides) is small but you have large 
 ```bash
 # Extract to alternative location with more space
 ./dbbackup restore cluster cluster_backup.tar.gz \
-  --workdir /u01/dba/restore_tmp \
+  --workdir /mnt/storage/restore_tmp \
   --confirm
 ```
 
@@ -785,7 +785,7 @@ sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
 
 # Special case: Limited system disk space (use alternative extraction directory)
 sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
-  --workdir /u01/dba/restore_tmp \
+  --workdir /mnt/storage/restore_tmp \
   --confirm
 ```
 
