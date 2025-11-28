@@ -150,17 +150,30 @@ Speed: 25 MB/s  |  Size: 3.2 GB / 7.1 GB
 
 **Configuration Settings:**
 ```
-┌─────────────────────────────────────────────┐
-│        Configuration Settings               │
-├─────────────────────────────────────────────┤
-│ Compression Level: 6                        │
-│ Parallel Jobs: 16                           │
-│ Dump Jobs: 8                                │
-│ CPU Workload: Balanced                      │
-│ Max Cores: 32                               │
-├─────────────────────────────────────────────┤
-│ Auto-saved to: .dbbackup.conf               │
-└─────────────────────────────────────────────┘
+⚙️  Configuration Settings
+
+> Database Type: postgres (PostgreSQL)
+    Target database engine (press Enter to cycle: PostgreSQL → MySQL → MariaDB)
+  CPU Workload Type: balanced
+  Backup Directory: /root/db_backups
+  Compression Level: 6
+  Parallel Jobs: 16
+  Dump Jobs: 8
+  Database Host: localhost
+  Database Port: 5432
+  Database User: root
+  Default Database: postgres
+  SSL Mode: prefer
+  Auto Detect CPU Cores: true
+
+📋 Current Configuration:
+  Target DB: PostgreSQL (postgres)
+  Database: root@localhost:5432
+  Backup Dir: /root/db_backups
+  Compression: Level 6
+  Jobs: 16 parallel, 8 dump
+
+↑/↓ navigate • Enter edit • 's' save • 'r' reset • 'q' menu • Tab=dirs on path fields only
 ```
 
 #### Interactive Features
