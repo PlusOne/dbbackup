@@ -536,6 +536,19 @@ Restore entire PostgreSQL cluster from archive:
 ./dbbackup restore cluster ARCHIVE_FILE [OPTIONS]
 ```
 
+**Special case - Limited system disk space:**
+
+If your system disk (where PostgreSQL data resides) is small but you have large NFS mounts or additional partitions, use `--workdir` to extract on the larger storage:
+
+```bash
+# Extract to alternative location with more space
+./dbbackup restore cluster cluster_backup.tar.gz \
+  --workdir /u01/dba/restore_tmp \
+  --confirm
+```
+
+This prevents "insufficient disk space" errors on VMs with limited root partitions but large mounted storage.
+
 ### Verification & Maintenance
 
 #### Verify Backup Integrity
@@ -664,7 +677,14 @@ sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
   --confirm \
   --jobs 16 \
   --verbose
+
+# Special case: Limited system disk space (use alternative extraction directory)
+sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
+  --workdir /u01/dba/restore_tmp \
+  --confirm
 ```
+
+**Note:** The `--workdir` flag is only needed when your system disk is small but you have larger mounted storage (NFS, SAN, etc.). For standard deployments, it's not required.
 
 **Safety Features:**
 
