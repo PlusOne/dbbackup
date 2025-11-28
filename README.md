@@ -113,19 +113,28 @@ Menu-driven interface for all operations. Press arrow keys to navigate, Enter to
 
 **Main Menu:**
 ```
-┌─────────────────────────────────────────────┐
-│          Database Backup Tool               │
-├─────────────────────────────────────────────┤
-│ > Backup Database                           │
-│   Restore Database                          │
-│   List Backups                              │
-│   Configuration Settings                    │
-│   Exit                                      │
-├─────────────────────────────────────────────┤
-│ Database: postgres@localhost:5432           │
-│ Type: PostgreSQL                            │
-│ Backup Dir: /var/lib/pgsql/db_backups       │
-└─────────────────────────────────────────────┘
+🗄️  Database Backup Tool - Interactive Menu
+
+Target Engine: PostgreSQL  |  MySQL  |  MariaDB
+Switch with ←/→ or t • Cluster backup requires PostgreSQL
+Database: root@localhost:5432 (PostgreSQL)
+
+> Single Database Backup
+  Sample Database Backup (with ratio)
+  Cluster Backup (all databases)
+  ─────────────────────────────
+  Restore Single Database
+  Restore Cluster Backup
+  List & Manage Backups
+  ─────────────────────────────
+  View Active Operations
+  Show Operation History
+  Database Status & Health Check
+  Configuration Settings
+  Clear Operation History
+  Quit
+
+Press ↑/↓ to navigate • Enter to select • q to quit
 ```
 
 **Backup Progress:**
