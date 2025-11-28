@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,7 @@ var (
 	restoreVerbose   bool
 	restoreNoProgress bool
 	restoreWorkdir   string
+	restoreCleanCluster bool
 	
 	// Encryption flags
 	restoreEncryptionKeyFile string
@@ -139,6 +141,9 @@ Examples:
 
 	# Use alternative working directory (for VMs with small system disk)
 	dbbackup restore cluster cluster_backup.tar.gz --workdir /mnt/storage/restore_tmp --confirm
+
+	# Disaster recovery: drop all existing databases first (clean slate)
+	dbbackup restore cluster cluster_backup.tar.gz --clean-cluster --confirm
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestoreCluster,
@@ -232,6 +237,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreConfirm, "confirm", false, "Confirm and execute restore (required)")
 	restoreClusterCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would be done without executing")
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
+	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
@@ -519,6 +525,40 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Create database instance for pre-checks
+	db, err := database.New(cfg, log)
+	if err != nil {
+		return fmt.Errorf("failed to create database instance: %w", err)
+	}
+	defer db.Close()
+
+	// Check existing databases if --clean-cluster is enabled
+	var existingDBs []string
+	if restoreCleanCluster {
+		ctx := context.Background()
+		if err := db.Connect(ctx); err != nil {
+			return fmt.Errorf("failed to connect to database: %w", err)
+		}
+
+		allDBs, err := db.ListDatabases(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to list databases: %w", err)
+		}
+
+		// Filter out system databases (keep postgres, template0, template1)
+		systemDBs := map[string]bool{
+			"postgres":  true,
+			"template0": true,
+			"template1": true,
+		}
+
+		for _, dbName := range allDBs {
+			if !systemDBs[dbName] {
+				existingDBs = append(existingDBs, dbName)
+			}
+		}
+	}
+
 	// Dry-run mode or confirmation required
 	isDryRun := restoreDryRun || !restoreConfirm
 
@@ -530,16 +570,27 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		if restoreWorkdir != "" {
 			fmt.Printf("  Working Directory: %s (alternative extraction location)\n", restoreWorkdir)
 		}
+		if restoreCleanCluster {
+			fmt.Printf("  Clean Cluster: true (will drop %d existing database(s))\n", len(existingDBs))
+			if len(existingDBs) > 0 {
+				fmt.Printf("\n⚠️  Databases to be dropped:\n")
+				for _, dbName := range existingDBs {
+					fmt.Printf("    - %s\n", dbName)
+				}
+			}
+		}
 		fmt.Println("\nTo execute this restore, add --confirm flag")
 		return nil
 	}
 
-	// Create database instance
-	db, err := database.New(cfg, log)
-	if err != nil {
-		return fmt.Errorf("failed to create database instance: %w", err)
+	// Warning for clean-cluster
+	if restoreCleanCluster && len(existingDBs) > 0 {
+		log.Warn("🔥 Clean cluster mode enabled")
+		log.Warn(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", len(existingDBs)))
+		for _, dbName := range existingDBs {
+			log.Warn("   - " + dbName)
+		}
 	}
-	defer db.Close()
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
@@ -557,6 +608,27 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		log.Warn("Restore interrupted by user")
 		cancel()
 	}()
+
+	// Drop existing databases if clean-cluster is enabled
+	if restoreCleanCluster && len(existingDBs) > 0 {
+		log.Info("Dropping existing databases before restore...")
+		for _, dbName := range existingDBs {
+			log.Info("Dropping database", "name", dbName)
+			// Use CLI-based drop to avoid connection issues
+			dropCmd := exec.CommandContext(ctx, "psql",
+				"-h", cfg.Host,
+				"-p", fmt.Sprintf("%d", cfg.Port),
+				"-U", cfg.User,
+				"-d", "postgres",
+				"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\"", dbName),
+			)
+			if err := dropCmd.Run(); err != nil {
+				log.Warn("Failed to drop database", "name", dbName, "error", err)
+				// Continue with other databases
+			}
+		}
+		log.Info("Database cleanup completed")
+	}
 
 	// Execute cluster restore
 	log.Info("Starting cluster restore...")

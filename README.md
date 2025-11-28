@@ -787,9 +787,22 @@ sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
 sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
   --workdir /mnt/storage/restore_tmp \
   --confirm
+
+# Disaster recovery: Drop all existing databases first (clean slate)
+sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
+  --clean-cluster \
+  --confirm
+
+# Combined: Clean cluster + alternative storage
+sudo -u postgres ./dbbackup restore cluster cluster_backup.tar.gz \
+  --clean-cluster \
+  --workdir /mnt/storage/restore_tmp \
+  --confirm
 ```
 
-**Note:** The `--workdir` flag is only needed when your system disk is small but you have larger mounted storage (NFS, SAN, etc.). For standard deployments, it's not required.
+**Note:** 
+- The `--workdir` flag is only needed when your system disk is small but you have larger mounted storage (NFS, SAN, etc.)
+- The `--clean-cluster` flag drops all user databases before restore (keeps postgres, template0, template1). Use for disaster recovery scenarios.
 
 **Safety Features:**
 
