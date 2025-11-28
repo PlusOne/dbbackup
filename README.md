@@ -180,13 +180,12 @@ Press ↑/↓ to navigate • Enter to select • q to quit
 
 🎯 Cluster Restore Options
   Host: localhost:5432
-  Existing Databases: 7 found
-    - test00
-    - teststablekc
-    - keycloak
-    - stabledc
-    - postgres
-    ... and 2 more
+  Existing Databases: 5 found
+    - myapp_production
+    - myapp_analytics
+    - users_db
+    - inventory_db
+    - reports_db
   Clean All First: ✓ true (press 'c' to toggle)
 
 🛡️  Safety Checks
@@ -208,7 +207,7 @@ Press ↑/↓ to navigate • Enter to select • q to quit
 🔄 Restoring Cluster
 
 Phase: Restoring databases
-Status: ⠹ Restoring database: test00 (22 GB)
+Status: ⠹ Restoring database: myapp_production (18 GB)
 
 Elapsed: 3m 42s
 
@@ -256,7 +255,7 @@ User: root
 Backup Directory: /root/db_backups
 Version: PostgreSQL 17.2
 
-Databases Found: 7
+Databases Found: 5
 
 ✓ All systems operational
 
@@ -271,13 +270,13 @@ Total Archives: 15  |  Total Size: 156.8 GB
 
 FILENAME                            FORMAT                    SIZE         MODIFIED
 ───────────────────────────────────────────────────────────────────────────────────────────────
-> ✓ cluster_20251128_092928.tar.gz   PostgreSQL Cluster        22.5 GB      2025-11-28 09:29
-  ✓ test00_20251127.dump.gz          PostgreSQL Custom         18.2 GB      2025-11-27 14:22
-  ✓ teststablekc_20251127.sql.gz     PostgreSQL SQL            46 MB        2025-11-27 14:20
-  ✓ cluster_20251126.tar.gz          PostgreSQL Cluster        22.1 GB      2025-11-26 09:15
-  ⚠ keycloak_20251020.dump.gz        PostgreSQL Custom         19 MB        2025-10-20 10:30
-  ✓ stabledc_20251125.sql            PostgreSQL SQL            9.4 MB       2025-11-25 16:42
-  ✓ postgres_20251124.dump           PostgreSQL Custom         7.5 MB       2025-11-24 08:15
+> ✓ cluster_20250115_093000.tar.gz   PostgreSQL Cluster        18.5 GB      2025-01-15 09:30
+  ✓ myapp_prod_20250114.dump.gz      PostgreSQL Custom         12.3 GB      2025-01-14 14:22
+  ✓ analytics_20250114.sql.gz        PostgreSQL SQL            2.1 GB       2025-01-14 14:20
+  ✓ cluster_20250113.tar.gz          PostgreSQL Cluster        18.2 GB      2025-01-13 09:15
+  ⚠ users_db_20241220.dump.gz        PostgreSQL Custom         850 MB       2024-12-20 10:30
+  ✓ inventory_20250112.sql           PostgreSQL SQL            456 MB       2025-01-12 16:42
+  ✓ reports_20250111.dump            PostgreSQL Custom         128 MB       2025-01-11 08:15
 
 ⌨️  ↑/↓: Navigate | r: Restore | v: Verify | i: Info | d: Delete | R: Refresh | Esc: Back
 ```
