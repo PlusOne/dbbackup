@@ -243,6 +243,45 @@ Elapsed: 3m 42s
 ↑/↓ navigate • Enter edit • 's' save • 'r' reset • 'q' menu • Tab=dirs on path fields only
 ```
 
+**Database Status & Health Check:**
+```
+📊 Database Status & Health Check
+
+Connection Status:
+  ✓ Connected
+
+Database Type: PostgreSQL (postgres)
+Host: localhost:5432
+User: root
+Backup Directory: /root/db_backups
+Version: PostgreSQL 17.2
+
+Databases Found: 7
+
+✓ All systems operational
+
+⌨️  Press any key to return to menu
+```
+
+**Backup Archive Manager (List & Manage):**
+```
+🗄️  Backup Archive Manager
+
+Total Archives: 15  |  Total Size: 156.8 GB
+
+FILENAME                            FORMAT                    SIZE         MODIFIED
+───────────────────────────────────────────────────────────────────────────────────────────────
+> ✓ cluster_20251128_092928.tar.gz   PostgreSQL Cluster        22.5 GB      2025-11-28 09:29
+  ✓ test00_20251127.dump.gz          PostgreSQL Custom         18.2 GB      2025-11-27 14:22
+  ✓ teststablekc_20251127.sql.gz     PostgreSQL SQL            46 MB        2025-11-27 14:20
+  ✓ cluster_20251126.tar.gz          PostgreSQL Cluster        22.1 GB      2025-11-26 09:15
+  ⚠ keycloak_20251020.dump.gz        PostgreSQL Custom         19 MB        2025-10-20 10:30
+  ✓ stabledc_20251125.sql            PostgreSQL SQL            9.4 MB       2025-11-25 16:42
+  ✓ postgres_20251124.dump           PostgreSQL Custom         7.5 MB       2025-11-24 08:15
+
+⌨️  ↑/↓: Navigate | r: Restore | v: Verify | i: Info | d: Delete | R: Refresh | Esc: Back
+```
+
 #### Interactive Features
 
 The interactive mode provides a menu-driven interface for all database operations:
