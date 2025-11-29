@@ -500,10 +500,10 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 				}
 			}
 			
-			log.Warn("⚠️  Using alternative working directory for extraction")
-			log.Warn("    This is recommended when system disk space is limited")
-			log.Warn("    Location: " + restoreWorkdir)
-		}
+		log.Warn("⚠️  Using alternative working directory for extraction")
+		log.Warn("    This is recommended when system disk space is limited")
+		log.Warn("    Location: " + restoreWorkdir)
+	}
 
 		log.Info("Checking disk space...")
 		multiplier := 4.0 // Cluster needs more space for extraction
@@ -515,9 +515,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		if err := safety.VerifyTools("postgres"); err != nil {
 			return fmt.Errorf("tool verification failed: %w", err)
 		}
-	}
-
-	// Create database instance for pre-checks
+	}	// Create database instance for pre-checks
 	db, err := database.New(cfg, log)
 	if err != nil {
 		return fmt.Errorf("failed to create database instance: %w", err)
