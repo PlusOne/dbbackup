@@ -500,10 +500,10 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 				}
 			}
 			
-		log.Warn("⚠️  Using alternative working directory for extraction")
-		log.Warn("    This is recommended when system disk space is limited")
-		log.Warn("    Location: " + restoreWorkdir)
-	}
+			log.Warn("⚠️  Using alternative working directory for extraction")
+			log.Warn("    This is recommended when system disk space is limited")
+			log.Warn("    Location: " + restoreWorkdir)
+		}
 
 		log.Info("Checking disk space...")
 		multiplier := 4.0 // Cluster needs more space for extraction
